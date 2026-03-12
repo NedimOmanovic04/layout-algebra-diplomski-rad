@@ -39,21 +39,8 @@ export const Canvas: React.FC = () => {
       handleDrag(id, clamped.left, clamped.top);
     };
 
-    const onMouseUp = (upEvt: MouseEvent) => {
+    const onMouseUp = () => {
       if (activeDragId.current) {
-        if (didMove.current) {
-          const dropTarget = document.elementFromPoint(upEvt.clientX, upEvt.clientY)?.closest('[data-element-id]');
-          const targetId = dropTarget ? (dropTarget as HTMLElement).dataset?.elementId : null;
-            if (targetId && targetId !== id) {
-            const { ast } = useLayoutStore.getState();
-            const pm = new Map<string, string>();
-            ast?.hierarchy.forEach((h) => pm.set(h.childId, h.parentId));
-            let curr: string | undefined = targetId;
-            let wouldCycle = false;
-            while (curr) { if (curr === id) { wouldCycle = true; break; } curr = pm.get(curr); }
-            if (!wouldCycle) useLayoutStore.getState().setElementParent(id, targetId);
-          }
-        }
         didMove.current = false;
         handleDragStop(activeDragId.current);
         activeDragId.current = null;
@@ -159,31 +146,6 @@ export const Canvas: React.FC = () => {
   return (
     <div className="canvas-wrapper canvas-wrapper-scroll" ref={wrapperRef} onClick={(e) => { if (!(e.target as Element).closest('.canvas-element')) setSelectedElementId(''); }}>
       <div className="canvas-container" style={{ width: cw, height: ch }} data-container-size={`${cw}x${ch}`}>
-        {/* SVG Layer for connection lines - moved to higher z-index but below selection */}
-        <svg style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', pointerEvents: 'none', zIndex: 450 }}>
-          {ast.hierarchy.map((h, idx) => {
-            const parentPos = positions[h.parentId];
-            const childPos = positions[h.childId];
-            if (!parentPos || !childPos || h.parentId === 'container') return null;
-
-            const x1 = parentPos.left + parentPos.width / 2;
-            const y1 = parentPos.top + parentPos.height / 2;
-            const x2 = childPos.left + childPos.width / 2;
-            const y2 = childPos.top + childPos.height / 2;
-
-            return (
-              <line
-                key={`line-${idx}`}
-                x1={x1} y1={y1} x2={x2} y2={y2}
-                stroke="#ff79c6"
-                strokeWidth="3"
-                strokeDasharray="6 4"
-                strokeOpacity="0.6"
-              />
-            );
-          })}
-        </svg>
-
         {elementsToRender.map(el => {
           const pos = positions[el.id];
           if (!pos) return null;
@@ -191,11 +153,9 @@ export const Canvas: React.FC = () => {
           const depth = getDepth(el.id);
           const selIdx = selectionOrder.indexOf(el.id);
           
-          // User requested: Child ALWAYS above parent.
-          // Higher depth = child.
-          // We want child (higher depth) to have HIGHER z-index.
-          const baseZ = 100 + depth; 
-          const zIndex = selIdx >= 0 ? 500 + selIdx : baseZ;
+          // User requested: Child ALWAYS above everything.
+          // significantly higher multiplier for depth ensures hierarchy priority.
+          const zIndex = (depth + 1) * 1000 + (selIdx >= 0 ? selIdx + 1 : 0);
 
           const isSelected = selectedElementIds.includes(el.id);
 

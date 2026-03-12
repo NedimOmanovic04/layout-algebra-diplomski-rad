@@ -64,7 +64,9 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
 
   setCode: (code: string, opts?: { keepPositionOverrides?: boolean }) => {
     set({ code });
-    if (!opts?.keepPositionOverrides) {
+    // Default to KEEPING overrides unless explicitly told otherwise
+    const keepOverrides = opts?.keepPositionOverrides !== false; 
+    if (!keepOverrides) {
       set({ positionOverrides: {} });
     }
     const { ast, error } = parseDSL(code);
@@ -80,11 +82,13 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
         // Post-solve: apply AVOID collisions if any
         resolveOverlaps(ast, positions);
         
-        // Apply position overrides (from manual resize) - override solver result
+        // Apply position overrides (from manual resize/drag) - override solver result
         const overrides = get().positionOverrides;
         const merged = { ...positions };
         for (const id of Object.keys(overrides)) {
-          merged[id] = overrides[id];
+          if (merged[id]) {
+            merged[id] = { ...overrides[id] };
+          }
         }
         
         set({ ast, error: null, positions: merged });
@@ -107,7 +111,7 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
     const newCode = currentCode + '\n' + newLine + '\n';
 
     set({ elementCounters: counters });
-    get().setCode(newCode);
+    get().setCode(newCode, { keepPositionOverrides: true });
   },
 
   resizeElement: (id: string, newWidth: number, newHeight: number, newLeft?: number, newTop?: number) => {
@@ -116,21 +120,58 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
     const currentCode = get().code;
     const ast = get().ast;
 
-    // Store override so position survives solver re-run (constraints like centerX would otherwise move it)
-    if (newLeft !== undefined && newTop !== undefined) {
-      set({ positionOverrides: { ...get().positionOverrides, [id]: { left: newLeft, top: newTop, width: w, height: h } } });
+    let left = newLeft;
+    let top = newTop;
+    if (left === undefined || top === undefined) {
+      const pos = get().positions[id];
+      if (pos) {
+        left = pos.left;
+        top = pos.top;
+      }
     }
 
-    const solver = get().solver;
-    if (newLeft !== undefined && newTop !== undefined && ast) {
-      const tree: Record<string, string> = {};
-      ast.hierarchy.forEach((h) => (tree[h.childId] = h.parentId));
-      const parentId = tree[id] || 'container';
-      const positions = get().positions;
-      const parentPos = positions[parentId] || { left: 0, top: 0 };
-      const localLeft = newLeft - parentPos.left;
-      const localTop = newTop - parentPos.top;
-      solver.savedPositions[id] = { localLeft, localTop };
+    if (left !== undefined && top !== undefined) {
+      const newOverrides = { ...get().positionOverrides, [id]: { left, top, width: w, height: h } };
+      const currentPositions = { ...get().positions, [id]: { left, top, width: w, height: h } };
+      
+      // Sync recursive group offsets
+      const visited = new Set<string>();
+      const syncGroupRecursively = (currId: string) => {
+        if (visited.has(currId)) return;
+        visited.add(currId);
+        const pos = currentPositions[currId];
+        if (pos) newOverrides[currId] = pos;
+        
+        get().groups.forEach(g => {
+          if (g.leaderId === currId || g.followerId === currId) {
+            const leader = currentPositions[g.leaderId];
+            const follower = currentPositions[g.followerId];
+            if (leader && follower) {
+              g.offsetX = follower.left - leader.left;
+              g.offsetY = follower.top - leader.top;
+              g.gapX = follower.left - (leader.left + leader.width);
+              g.gapY = follower.top - (leader.top + leader.height);
+            }
+            syncGroupRecursively(g.leaderId === currId ? g.followerId : g.leaderId);
+          }
+        });
+      };
+      syncGroupRecursively(id);
+
+      set({ 
+        positionOverrides: newOverrides,
+        groups: [...get().groups] // Trigger update
+      });
+
+      if (ast) {
+        const tree: Record<string, string> = {};
+        ast.hierarchy.forEach((h) => (tree[h.childId] = h.parentId));
+        const parentId = tree[id] || 'container';
+        const parentPos = currentPositions[parentId] || { left: 0, top: 0 };
+        const localLeft = left - parentPos.left;
+        const localTop = top - parentPos.top;
+        get().solver.savedPositions[id] = { localLeft, localTop };
+      }
     }
 
     const regex = new RegExp(`^(ELEMENT\\s+${id}\\s+)\\d+(\\.\\d+)?\\s+\\d+(\\.\\d+)?`, 'm');
@@ -171,7 +212,7 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
     }
 
     if (newCode !== currentCode) {
-      get().setCode(newCode);
+      get().setCode(newCode, { keepPositionOverrides: true });
     }
   },
 
@@ -198,7 +239,7 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
     }
 
     if (newCode !== currentCode) {
-      get().setCode(newCode);
+      get().setCode(newCode, { keepPositionOverrides: true });
     }
   },
 
@@ -233,7 +274,7 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
     const nextOverrides = { ...get().positionOverrides };
     delete nextOverrides[id];
     set({ positionOverrides: nextOverrides });
-    get().setCode(code);
+    get().setCode(code, { keepPositionOverrides: true });
   },
 
   setSelectedElementId: (id: string, multi: boolean = false) => {

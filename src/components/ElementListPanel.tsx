@@ -6,6 +6,7 @@ export const ElementListPanel: React.FC = () => {
   const [groupLeader, setGroupLeader] = useState<string>('');
   const [colorInput, setColorInput] = useState<string>('#bd93f9');
   const [dragOverId, setDragOverId] = useState<string | null>(null);
+  const [collapsedIds, setCollapsedIds] = useState<Set<string>>(new Set());
 
   if (!ast) return null;
 
@@ -17,11 +18,25 @@ export const ElementListPanel: React.FC = () => {
   const getChildren = (parentId: string) => elements.filter(e => hierarchyMap[e.id] === parentId);
   const roots = elements.filter(e => !hierarchyMap[e.id] || hierarchyMap[e.id] === 'container');
 
+  const toggleCollapse = (id: string) => {
+    const next = new Set(collapsedIds);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    setCollapsedIds(next);
+  };
+
+  const freeChildren = (parentId: string) => {
+    const children = getChildren(parentId);
+    children.forEach(c => setElementParent(c.id, 'none'));
+  };
+
   const renderElement = (el: typeof elements[0], indent = 0) => {
     const children = getChildren(el.id);
     const isDropTarget = dragOverId === el.id;
     const isSelected = selectedElementIds.includes(el.id);
     const groupingStatus = groups.find(g => g.followerId === el.id) ? `[Slave]` : (groups.find(g => g.leaderId === el.id) ? `[Leader]` : '');
+    const isCollapsed = collapsedIds.has(el.id);
+    const currentParent = hierarchyMap[el.id] || 'container';
     
     return (
       <div key={el.id} className="element-list-tree">
@@ -47,6 +62,11 @@ export const ElementListPanel: React.FC = () => {
           }}
         >
           <div className="element-item-header">
+            {children.length > 0 && (
+              <button className="collapse-toggle" onClick={(e) => { e.stopPropagation(); toggleCollapse(el.id); }}>
+                {isCollapsed ? '▶' : '▼'}
+              </button>
+            )}
             <div className="element-color-swatch" style={{ backgroundColor: colorMap[el.id] || 'var(--element-bg)' }} />
             <span className="element-id-text">
               {el.id} {groupingStatus && <span style={{fontSize: '0.7em', color: 'var(--accent)', marginLeft: '8px'}}>{groupingStatus}</span>}
@@ -67,9 +87,54 @@ export const ElementListPanel: React.FC = () => {
               <label>H:</label>
               <input type="number" className="size-input" value={el.height} onChange={ev => { ev.stopPropagation(); resizeElement(el.id, el.width, parseInt(ev.target.value) || el.height); }} />
             </div>
+            <div className="parent-row">
+              <label style={{ fontSize: '10px' }}>Parent:</label>
+              <select 
+                className="parent-select" 
+                value={currentParent} 
+                onChange={e => setElementParent(el.id, e.target.value)}
+                onClick={e => e.stopPropagation()}
+              >
+                <option value="container">container</option>
+                {elements.filter(e => e.id !== el.id).map(e => <option key={e.id} value={e.id}>{e.id}</option>)}
+              </select>
+              {currentParent !== 'container' && (
+                <button 
+                  className="element-delete-btn" 
+                  style={{ fontSize: '14px' }} 
+                  onClick={(e) => { e.stopPropagation(); setElementParent(el.id, 'none'); }}
+                  title="Ukloni roditelja"
+                >
+                  ×
+                </button>
+              )}
+            </div>
+            {children.length > 0 && (
+              <>
+                <div style={{ marginTop: '8px', fontSize: '10px', color: '#6272a4', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Djeca:</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginTop: '4px' }}>
+                  {children.map(c => (
+                    <div key={c.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'rgba(0,0,0,0.1)', padding: '2px 6px', borderRadius: '3px' }}>
+                      <span style={{ fontSize: '11px' }}>{c.id}</span>
+                      <button 
+                        className="element-delete-btn" 
+                        style={{ fontSize: '12px', padding: '0 4px' }} 
+                        onClick={(e) => { e.stopPropagation(); setElementParent(c.id, 'none'); }}
+                        title={`Ukloni ${c.id}`}
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
+                </div>
+                <button className="free-children-btn" style={{ marginTop: '8px' }} onClick={(e) => { e.stopPropagation(); freeChildren(el.id); }}>
+                  Oslobodi svu djecu
+                </button>
+              </>
+            )}
           </div>
         </div>
-        {children.map(c => renderElement(c, indent + 1))}
+        {!isCollapsed && children.map(c => renderElement(c, indent + 1))}
       </div>
     );
   };
