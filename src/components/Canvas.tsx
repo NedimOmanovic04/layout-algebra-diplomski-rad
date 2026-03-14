@@ -9,6 +9,96 @@ export const Canvas: React.FC = () => {
   const dragStartPos = useRef({ x: 0, y: 0, left: 0, top: 0 });
   const didMove = useRef(false);
 
+  if (error) return <div className="canvas-wrapper error">{error}</div>;
+  if (!ast || !positions || Object.keys(positions).length === 0) {
+    return (
+        <div className="canvas-wrapper empty">
+            <div className="empty-message">Invalid DSL or Solver Conflict</div>
+        </div>
+    );
+  }
+
+  const container = ast.elements.find(e => e.id === 'container');
+  const cw = container?.width ?? 800;
+  const ch = container?.height ?? 600;
+  const parentMap = new Map<string, string>();
+  ast.hierarchy.forEach(h => parentMap.set(h.childId, h.parentId));
+
+  // ─── Task 1: Strict child-within-parent clamping ──────────────────
+  // Gets the ACTUAL current parent position (may be overridden/solver'd)
+  const getParentBounds = (id: string) => {
+    const parentId = parentMap.get(id) || 'container';
+    const parentPos = positions[parentId] || { left: 0, top: 0, width: cw, height: ch };
+    return {
+      parentId,
+      pLeft: parentPos.left,
+      pTop: parentPos.top,
+      pRight: parentPos.left + parentPos.width,
+      pBottom: parentPos.top + parentPos.height,
+      pWidth: parentPos.width,
+      pHeight: parentPos.height,
+    };
+  };
+
+  // Clamp position: child stays within parent bounds
+  const clampPosition = (id: string, left: number, top: number, width: number, height: number) => {
+    const { pLeft, pTop, pRight, pBottom } = getParentBounds(id);
+    const nLeft = Math.max(pLeft, Math.min(left, pRight - width));
+    const nTop = Math.max(pTop, Math.min(top, pBottom - height));
+    return { left: nLeft, top: nTop, width, height };
+  };
+
+  // Clamp resize: child can't extend beyond parent bounds
+  const clampResize = (id: string, left: number, top: number, width: number, height: number) => {
+    const { pLeft, pTop, pRight, pBottom } = getParentBounds(id);
+    // Clamp left/top to not go before parent origin
+    let nLeft = Math.max(pLeft, left);
+    let nTop = Math.max(pTop, top);
+    // Clamp width/height to not go beyond parent right/bottom
+    let nW = Math.min(width, pRight - nLeft);
+    let nH = Math.min(height, pBottom - nTop);
+    // Enforce minimum size
+    nW = Math.max(20, nW);
+    nH = Math.max(20, nH);
+    return { left: nLeft, top: nTop, width: nW, height: nH };
+  };
+
+  // ─── Task 2: Z-index layering logic ───────────────────────────────
+  // Depth = how deep in hierarchy (container=0, direct child=1, grandchild=2...)
+  const getDepth = (id: string): number => {
+    let d = 0, curr = id;
+    while (parentMap.has(curr)) { d++; curr = parentMap.get(curr)!; if (d > 50) break; }
+    return d;
+  };
+
+  // Get selection boost: for an element's z-index, we want it to carry the
+  // selection boost of its most-recently-selected ancestor (or itself).
+  // This ensures: when parent B is selected and dragged over element A,
+  // B goes above A AND child C of B also goes above A (because C inherits B's boost).
+  const getSelectionBoost = (id: string): number => {
+    // Get the max selection order index from this element and all its ancestors
+    let maxBoost = selectionOrder.indexOf(id);
+    let curr = id;
+    while (parentMap.has(curr)) {
+      curr = parentMap.get(curr)!;
+      const idx = selectionOrder.indexOf(curr);
+      if (idx > maxBoost) maxBoost = idx;
+    }
+    return maxBoost >= 0 ? (maxBoost + 1) : 0;
+  };
+
+  // Z-index formula:
+  //   selectionBoost * 100  → groups element families by selection order
+  //   + depth * 10          → child always above parent within same family
+  //   + 1                   → base offset
+  const computeZIndex = (id: string): number => {
+    const depth = getDepth(id);
+    const boost = getSelectionBoost(id);
+    return boost * 100 + depth * 10 + 1;
+  };
+
+  // ──────────────────────────────────────────────────────────────────
+
   const onElementMouseDown = (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
     setSelectedElementId(id);
@@ -35,25 +125,13 @@ export const Canvas: React.FC = () => {
       const { positions: posNow } = useLayoutStore.getState();
       const p = posNow[id];
       if (!p) return;
-      const clamped = clampToBounds(id, newLeft, newTop, p.width, p.height);
+      // Task 1: Clamp within parent bounds during drag
+      const clamped = clampPosition(id, newLeft, newTop, p.width, p.height);
       handleDrag(id, clamped.left, clamped.top);
     };
 
-    const onMouseUp = (upEvt: MouseEvent) => {
+    const onMouseUp = () => {
       if (activeDragId.current) {
-        if (didMove.current) {
-          const dropTarget = document.elementFromPoint(upEvt.clientX, upEvt.clientY)?.closest('[data-element-id]');
-          const targetId = dropTarget ? (dropTarget as HTMLElement).dataset?.elementId : null;
-            if (targetId && targetId !== id) {
-            const { ast } = useLayoutStore.getState();
-            const pm = new Map<string, string>();
-            ast?.hierarchy.forEach((h) => pm.set(h.childId, h.parentId));
-            let curr: string | undefined = targetId;
-            let wouldCycle = false;
-            while (curr) { if (curr === id) { wouldCycle = true; break; } curr = pm.get(curr); }
-            if (!wouldCycle) useLayoutStore.getState().setElementParent(id, targetId);
-          }
-        }
         didMove.current = false;
         handleDragStop(activeDragId.current);
         activeDragId.current = null;
@@ -89,7 +167,8 @@ export const Canvas: React.FC = () => {
       if (dir.includes('w')) { nw = Math.max(20, startW - dx); nl = startL + (startW - nw); }
       if (dir.includes('n')) { nh = Math.max(20, startH - dy); nt = startT + (startH - nh); }
 
-      const clamped = clampToBounds(id, nl, nt, nw, nh);
+      // Task 1: Clamp resize within parent bounds
+      const clamped = clampResize(id, nl, nt, nw, nh);
       const currentPositions = useLayoutStore.getState().positions;
       const nextPositions = { ...currentPositions, [id]: clamped };
       setPositionsDirect(nextPositions);
@@ -108,38 +187,6 @@ export const Canvas: React.FC = () => {
     window.addEventListener('mouseup', onMouseUp);
   };
 
-  if (error) return <div className="canvas-wrapper error">{error}</div>;
-  if (!ast || !positions || Object.keys(positions).length === 0) {
-    return (
-        <div className="canvas-wrapper empty">
-            <div className="empty-message">Invalid DSL or Solver Conflict</div>
-        </div>
-    );
-  }
-
-  const container = ast.elements.find(e => e.id === 'container');
-  const cw = container?.width ?? 800;
-  const ch = container?.height ?? 600;
-  const parentMap = new Map<string, string>();
-  ast.hierarchy.forEach(h => parentMap.set(h.childId, h.parentId));
-
-  const clampToBounds = (id: string, left: number, top: number, width: number, height: number) => {
-    const parentId = parentMap.get(id) || 'container';
-    const parentPos = positions[parentId] || { left: 0, top: 0, width: cw, height: ch };
-    const pRight = parentPos.left + parentPos.width;
-    const pBottom = parentPos.top + parentPos.height;
-    const nLeft = Math.max(parentPos.left, Math.min(left, pRight - width));
-    const nTop = Math.max(parentPos.top, Math.min(top, pBottom - height));
-    const nW = Math.min(width, parentPos.width);
-    const nH = Math.min(height, parentPos.height);
-    return { left: nLeft, top: nTop, width: nW, height: nH };
-  };
-
-  const getDepth = (id: string): number => {
-    let d = 0, curr = id;
-    while (parentMap.has(curr)) { d++; curr = parentMap.get(curr)!; if (d > 50) break; }
-    return d;
-  };
   const elementsToRender = [...ast.elements]
     .filter(e => e.id !== 'container')
     .sort((a, b) => getDepth(a.id) - getDepth(b.id));
@@ -159,45 +206,13 @@ export const Canvas: React.FC = () => {
   return (
     <div className="canvas-wrapper canvas-wrapper-scroll" ref={wrapperRef} onClick={(e) => { if (!(e.target as Element).closest('.canvas-element')) setSelectedElementId(''); }}>
       <div className="canvas-container" style={{ width: cw, height: ch }} data-container-size={`${cw}x${ch}`}>
-        {/* SVG Layer for connection lines - moved to higher z-index but below selection */}
-        <svg style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', pointerEvents: 'none', zIndex: 450 }}>
-          {ast.hierarchy.map((h, idx) => {
-            const parentPos = positions[h.parentId];
-            const childPos = positions[h.childId];
-            if (!parentPos || !childPos || h.parentId === 'container') return null;
-
-            const x1 = parentPos.left + parentPos.width / 2;
-            const y1 = parentPos.top + parentPos.height / 2;
-            const x2 = childPos.left + childPos.width / 2;
-            const y2 = childPos.top + childPos.height / 2;
-
-            return (
-              <line
-                key={`line-${idx}`}
-                x1={x1} y1={y1} x2={x2} y2={y2}
-                stroke="#ff79c6"
-                strokeWidth="3"
-                strokeDasharray="6 4"
-                strokeOpacity="0.6"
-              />
-            );
-          })}
-        </svg>
-
         {elementsToRender.map(el => {
           const pos = positions[el.id];
           if (!pos) return null;
           const bgColor = colorMap[el.id] || 'var(--element-bg)';
-          const depth = getDepth(el.id);
-          const selIdx = selectionOrder.indexOf(el.id);
-          
-          // User requested: Child ALWAYS above parent.
-          // Higher depth = child.
-          // We want child (higher depth) to have HIGHER z-index.
-          const baseZ = 100 + depth; 
-          const zIndex = selIdx >= 0 ? 500 + selIdx : baseZ;
-
           const isSelected = selectedElementIds.includes(el.id);
+          // Task 2: Proper z-index with recursive parent-child hierarchy
+          const zIndex = computeZIndex(el.id);
 
           return (
             <div

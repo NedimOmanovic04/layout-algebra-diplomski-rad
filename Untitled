@@ -1,0 +1,15 @@
+Layout algebra
+ Ideja je da se kreira alat koji omogućava formiranje layout-a web stranice na
+osnovu skupa ograničenja, varijabli, operatora i jednačina relevantnih za izgled
+web stranice. Ograničenja definiraju pravila i odnose koji određuju kako elementi
+trebaju biti raspoređeni u layout-u. Na primjer, ograničenje može odrediti da
+dugme treba biti horizontalno centrirano u nekom kontejnerskom elementu ili da
+dva elementa trebaju biti poravnata na svojim vrhovima. Varijable predstavljaju
+dimenzije, položaje i veličine elemenata u izgledu. Na primjer, širina i visina
+prozora ili pozicija dugmeta se mogu predstaviti kao varijable. Operatori se
+koriste za izražavanje odnosa i operacija između varijabli i ograničenja. Ovi
+operatori mogu uključivati: sabiranje, oduzimanje, množenje, dijeljenje,
+poređenje i slično. Jednačine definiraju odnose između ograničenja i varijabli.
+One izražavaju kako se određeno ograničenje ili varijabla izračunava na temelju
+drugih varijabli, ograničenja ili konstanti. Jednačine pomažu u održavanju
+dosljednosti u izgledu.

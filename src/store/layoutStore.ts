@@ -3,6 +3,14 @@ import { parseDSL } from '../parser/parser';
 import type { AST } from '../parser/types';
 import { LayoutSolver } from '../solver/solver';
 
+const MAX_HISTORY = 50;
+
+interface HistoryEntry {
+  code: string;
+  positionOverrides: Record<string, { left: number; top: number; width: number; height: number }>;
+  groups: { leaderId: string; followerId: string; offsetX: number; offsetY: number; gapX: number; gapY: number }[];
+}
+
 interface LayoutState {
   code: string;
   ast: AST | null;
@@ -13,7 +21,7 @@ interface LayoutState {
   elementCounters: Record<string, number>;
   selectedElementIds: string[];
   selectionOrder: string[];
-  setCode: (code: string, opts?: { keepPositionOverrides?: boolean }) => void;
+  setCode: (code: string, opts?: { keepPositionOverrides?: boolean; skipHistory?: boolean }) => void;
   setSelectedElementId: (id: string, multi?: boolean) => void;
   addElement: (type: string, width: number, height: number) => void;
   resizeElement: (id: string, newWidth: number, newHeight: number, newLeft?: number, newTop?: number) => void;
@@ -31,6 +39,14 @@ interface LayoutState {
   handleDragStart: (id: string) => void;
   handleDrag: (id: string, x: number, y: number) => void;
   handleDragStop: (id: string) => void;
+  // Undo/Redo
+  history: HistoryEntry[];
+  historyIndex: number;
+  canUndo: boolean;
+  canRedo: boolean;
+  undo: () => void;
+  redo: () => void;
+  pushHistory: () => void;
 }
 
 const defaultCode = `// Layout Algebra - Definition
@@ -50,6 +66,25 @@ CONSTRAINT card.centerY == container.centerY
 
 const solverInstance = new LayoutSolver();
 
+/**
+ * Generate user-friendly error message for constraint conflicts.
+ */
+function friendlyError(rawError: string, code: string): string {
+  if (rawError.includes('unsatisfiable')) {
+    const constraintLines = code.split('\n')
+      .filter(l => l.trim().startsWith('CONSTRAINT '))
+      .map(l => l.trim());
+    if (constraintLines.length > 0) {
+      return `Konflikt u ograničenjima: Neka ograničenja su kontradiktorni i ne mogu se istovremeno zadovoljiti.\n\nAktivna ograničenja:\n${constraintLines.map(l => '  • ' + l).join('\n')}\n\nPokušajte ukloniti ili oslabiti neko ograničenje (npr. dodajte WEAK na kraj).`;
+    }
+    return 'Konflikt u ograničenjima: Ograničenja su kontradiktorni. Pokušajte ukloniti ili oslabiti neko ograničenje.';
+  }
+  if (rawError.includes('duplicate')) {
+    return 'Greška: Duplikat varijable u solveru. Provjerite da nemate duplih ograničenja.';
+  }
+  return `Greška u constraintima: ${rawError}`;
+}
+
 export const useLayoutStore = create<LayoutState>((set, get) => ({
   code: defaultCode,
   ast: null,
@@ -61,10 +96,70 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
   selectedElementIds: [],
   selectionOrder: [],
   groups: [],
+  history: [],
+  historyIndex: -1,
+  canUndo: false,
+  canRedo: false,
 
-  setCode: (code: string, opts?: { keepPositionOverrides?: boolean }) => {
+  pushHistory: () => {
+    const { code, positionOverrides, groups, history, historyIndex } = get();
+    const entry: HistoryEntry = {
+      code,
+      positionOverrides: { ...positionOverrides },
+      groups: groups.map(g => ({ ...g })),
+    };
+    const newHistory = history.slice(0, historyIndex + 1);
+    newHistory.push(entry);
+    if (newHistory.length > MAX_HISTORY) {
+      newHistory.shift();
+    }
+    set({
+      history: newHistory,
+      historyIndex: newHistory.length - 1,
+      canUndo: newHistory.length > 1,
+      canRedo: false,
+    });
+  },
+
+  undo: () => {
+    const { history, historyIndex } = get();
+    if (historyIndex <= 0) return;
+    const newIndex = historyIndex - 1;
+    const entry = history[newIndex];
+    set({
+      historyIndex: newIndex,
+      canUndo: newIndex > 0,
+      canRedo: true,
+      positionOverrides: { ...entry.positionOverrides },
+      groups: entry.groups.map(g => ({ ...g })),
+    });
+    get().setCode(entry.code, { keepPositionOverrides: true, skipHistory: true });
+  },
+
+  redo: () => {
+    const { history, historyIndex } = get();
+    if (historyIndex >= history.length - 1) return;
+    const newIndex = historyIndex + 1;
+    const entry = history[newIndex];
+    set({
+      historyIndex: newIndex,
+      canUndo: true,
+      canRedo: newIndex < history.length - 1,
+      positionOverrides: { ...entry.positionOverrides },
+      groups: entry.groups.map(g => ({ ...g })),
+    });
+    get().setCode(entry.code, { keepPositionOverrides: true, skipHistory: true });
+  },
+
+  setCode: (code: string, opts?: { keepPositionOverrides?: boolean; skipHistory?: boolean }) => {
+    if (!opts?.skipHistory) {
+      get().pushHistory();
+    }
+
     set({ code });
-    if (!opts?.keepPositionOverrides) {
+    // Default to KEEPING overrides unless explicitly told otherwise (demo1 behavior)
+    const keepOverrides = opts?.keepPositionOverrides !== false;
+    if (!keepOverrides) {
       set({ positionOverrides: {} });
     }
     const { ast, error } = parseDSL(code);
@@ -80,16 +175,20 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
         // Post-solve: apply AVOID collisions if any
         resolveOverlaps(ast, positions);
         
-        // Apply position overrides (from manual resize) - override solver result
+        // Apply position overrides (from manual resize/drag) - override solver result
         const overrides = get().positionOverrides;
         const merged = { ...positions };
         for (const id of Object.keys(overrides)) {
-          merged[id] = overrides[id];
+          if (merged[id]) {
+            merged[id] = { ...overrides[id] };
+          }
         }
         
         set({ ast, error: null, positions: merged });
       } catch (e: any) {
-        set({ error: "Constraint Error: " + e.message, ast: null });
+        // Task 4: User-friendly error messages
+        const message = friendlyError(e.message || String(e), code);
+        set({ error: message, ast: null });
       }
     } else {
       set({ error, ast: null });
@@ -107,7 +206,7 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
     const newCode = currentCode + '\n' + newLine + '\n';
 
     set({ elementCounters: counters });
-    get().setCode(newCode);
+    get().setCode(newCode, { keepPositionOverrides: true });
   },
 
   resizeElement: (id: string, newWidth: number, newHeight: number, newLeft?: number, newTop?: number) => {
@@ -116,25 +215,69 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
     const currentCode = get().code;
     const ast = get().ast;
 
-    // Store override so position survives solver re-run (constraints like centerX would otherwise move it)
-    if (newLeft !== undefined && newTop !== undefined) {
-      set({ positionOverrides: { ...get().positionOverrides, [id]: { left: newLeft, top: newTop, width: w, height: h } } });
+    let left = newLeft;
+    let top = newTop;
+    if (left === undefined || top === undefined) {
+      const pos = get().positions[id];
+      if (pos) {
+        left = pos.left;
+        top = pos.top;
+      }
     }
 
-    const solver = get().solver;
-    if (newLeft !== undefined && newTop !== undefined && ast) {
-      const tree: Record<string, string> = {};
-      ast.hierarchy.forEach((h) => (tree[h.childId] = h.parentId));
-      const parentId = tree[id] || 'container';
-      const positions = get().positions;
-      const parentPos = positions[parentId] || { left: 0, top: 0 };
-      const localLeft = newLeft - parentPos.left;
-      const localTop = newTop - parentPos.top;
-      solver.savedPositions[id] = { localLeft, localTop };
+    if (left !== undefined && top !== undefined) {
+      const newOverrides = { ...get().positionOverrides, [id]: { left, top, width: w, height: h } };
+      const currentPositions = { ...get().positions, [id]: { left, top, width: w, height: h } };
+      
+      // Sync recursive group offsets (demo1 behavior)
+      const visited = new Set<string>();
+      const syncGroupRecursively = (currId: string) => {
+        if (visited.has(currId)) return;
+        visited.add(currId);
+        const pos = currentPositions[currId];
+        if (pos) newOverrides[currId] = pos;
+        
+        get().groups.forEach(g => {
+          if (g.leaderId === currId || g.followerId === currId) {
+            const leader = currentPositions[g.leaderId];
+            const follower = currentPositions[g.followerId];
+            if (leader && follower) {
+              g.offsetX = follower.left - leader.left;
+              g.offsetY = follower.top - leader.top;
+              g.gapX = follower.left - (leader.left + leader.width);
+              g.gapY = follower.top - (leader.top + leader.height);
+            }
+            syncGroupRecursively(g.leaderId === currId ? g.followerId : g.leaderId);
+          }
+        });
+      };
+      syncGroupRecursively(id);
+
+      set({ 
+        positionOverrides: newOverrides,
+        groups: [...get().groups] // Trigger update
+      });
+
+      if (ast) {
+        const tree: Record<string, string> = {};
+        ast.hierarchy.forEach((h) => (tree[h.childId] = h.parentId));
+        const parentId = tree[id] || 'container';
+        const parentPos = currentPositions[parentId] || { left: 0, top: 0 };
+        const localLeft = left - parentPos.left;
+        const localTop = top - parentPos.top;
+        get().solver.savedPositions[id] = { localLeft, localTop };
+      }
     }
 
-    const regex = new RegExp(`^(ELEMENT\\s+${id}\\s+)\\d+(\\.\\d+)?\\s+\\d+(\\.\\d+)?`, 'm');
-    const newCode = currentCode.replace(regex, `ELEMENT ${id} ${w} ${h}`);
+    // Handle percentage dimensions in ELEMENT line
+    const lineMatch = currentCode.match(new RegExp(`^ELEMENT\\s+${id}\\s+(\\S+)\\s+(\\S+)`, 'm'));
+    let newCode = currentCode;
+    if (lineMatch) {
+      const wStr = lineMatch[1].endsWith('%') ? lineMatch[1] : String(w);
+      const hStr = lineMatch[2].endsWith('%') ? lineMatch[2] : String(h);
+      const regex = new RegExp(`^ELEMENT\\s+${id}\\s+\\S+\\s+\\S+`, 'm');
+      newCode = currentCode.replace(regex, `ELEMENT ${id} ${wStr} ${hStr}`);
+    }
 
     if (newCode !== currentCode) {
       get().setCode(newCode, { keepPositionOverrides: true });
@@ -171,7 +314,7 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
     }
 
     if (newCode !== currentCode) {
-      get().setCode(newCode);
+      get().setCode(newCode, { keepPositionOverrides: true });
     }
   },
 
@@ -198,7 +341,7 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
     }
 
     if (newCode !== currentCode) {
-      get().setCode(newCode);
+      get().setCode(newCode, { keepPositionOverrides: true });
     }
   },
 
@@ -233,7 +376,7 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
     const nextOverrides = { ...get().positionOverrides };
     delete nextOverrides[id];
     set({ positionOverrides: nextOverrides });
-    get().setCode(code);
+    get().setCode(code, { keepPositionOverrides: true });
   },
 
   setSelectedElementId: (id: string, multi: boolean = false) => {
@@ -273,8 +416,20 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
   },
 
   handleDragStart: (id: string) => {
+    get().pushHistory();
     const solver = get().solver;
-    solver.beginDrag(id);
+    const ast = get().ast;
+    const lockedIds: string[] = [];
+    if (ast) {
+      const parentMap = new Map<string, string>();
+      ast.hierarchy.forEach(h => parentMap.set(h.childId, h.parentId));
+      let curr = parentMap.get(id);
+      while (curr && curr !== 'container') {
+        lockedIds.push(curr);
+        curr = parentMap.get(curr);
+      }
+    }
+    solver.beginDrag(id, lockedIds);
   },
 
   addGroup: (leaderId: string, followerId: string) => {
@@ -321,8 +476,6 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
         const positions = get().positions;
         const leader = positions[leaderId];
         if (leader) {
-          // Adjust position based on new gap
-          // We'll update the offset directly
           return {
             ...g,
             gapX,
@@ -335,7 +488,6 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
       return g;
     });
     set({ groups: nextGroups });
-    // Trigger position update for followers
     get().handleDrag(leaderId, get().positions[leaderId]?.left || 0, get().positions[leaderId]?.top || 0);
   },
 
@@ -355,7 +507,6 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
       const pos = positions[changedId];
       if (!pos) return;
 
-      // Find where changedId is leader
       get().groups.forEach(g => {
         if (g.leaderId === changedId && !visited.has(g.followerId)) {
           const followerPos = positions[g.followerId];
@@ -370,7 +521,6 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
         }
       });
 
-      // Find where changedId is follower (Two-sided)
       get().groups.forEach(g => {
         if (g.followerId === changedId && !visited.has(g.leaderId)) {
           const leaderPos = positions[g.leaderId];
@@ -392,11 +542,21 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
 
   handleDragStop: (id: string) => {
     const solver = get().solver;
-    solver.endDrag(id);
-    let positions = get().positions; // Use updated positions from handleDrag
+    const ast = get().ast;
+    const lockedIds: string[] = [];
+    if (ast) {
+      const parentMap = new Map<string, string>();
+      ast.hierarchy.forEach(h => parentMap.set(h.childId, h.parentId));
+      let curr = parentMap.get(id);
+      while (curr && curr !== 'container') {
+        lockedIds.push(curr);
+        curr = parentMap.get(curr);
+      }
+    }
+    solver.endDrag(id, lockedIds);
+    let positions = get().positions;
     const overrides = { ...get().positionOverrides };
     
-    // Persist all group member positions
     const visited = new Set<string>();
     const markVisited = (currId: string) => {
       if (visited.has(currId)) return;
@@ -457,4 +617,7 @@ function resolveOverlaps(
   }
 }
 
+// Initialize with default code
 useLayoutStore.getState().setCode(defaultCode);
+// Push initial state to history
+useLayoutStore.getState().pushHistory();

@@ -6,6 +6,7 @@ export const ElementListPanel: React.FC = () => {
   const [groupLeader, setGroupLeader] = useState<string>('');
   const [colorInput, setColorInput] = useState<string>('#bd93f9');
   const [dragOverId, setDragOverId] = useState<string | null>(null);
+  const [collapsedIds, setCollapsedIds] = useState<Set<string>>(new Set());
 
   if (!ast) return null;
 
@@ -17,16 +18,30 @@ export const ElementListPanel: React.FC = () => {
   const getChildren = (parentId: string) => elements.filter(e => hierarchyMap[e.id] === parentId);
   const roots = elements.filter(e => !hierarchyMap[e.id] || hierarchyMap[e.id] === 'container');
 
-  const renderElement = (el: typeof elements[0], indent = 0) => {
+  const toggleCollapse = (id: string) => {
+    const next = new Set(collapsedIds);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    setCollapsedIds(next);
+  };
+
+  // ─── Task 4: Tree view rendering ─────────────────────────────────
+  const renderTreeNode = (el: typeof elements[0], indent = 0) => {
     const children = getChildren(el.id);
+    const hasChildren = children.length > 0;
     const isDropTarget = dragOverId === el.id;
     const isSelected = selectedElementIds.includes(el.id);
-    const groupingStatus = groups.find(g => g.followerId === el.id) ? `[Slave]` : (groups.find(g => g.leaderId === el.id) ? `[Leader]` : '');
-    
+    const isCollapsed = collapsedIds.has(el.id);
+    const currentParent = hierarchyMap[el.id] || 'container';
+    const groupingStatus = groups.find(g => g.followerId === el.id) ? '[Slave]' : (groups.find(g => g.leaderId === el.id) ? '[Leader]' : '');
+
+    // Icon: container-like elements (those with children) get a different icon
+    const icon = hasChildren ? '🟦' : '📄';
+
     return (
-      <div key={el.id} className="element-list-tree">
+      <div key={el.id} className="tree-node">
         <div
-          className={`element-list-item ${isSelected ? 'selected' : ''} ${isDropTarget ? 'drag-over' : ''}`}
+          className={`tree-node-row ${isSelected ? 'tree-selected' : ''} ${isDropTarget ? 'tree-drag-over' : ''}`}
           style={{ paddingLeft: 8 + indent * 16 }}
           onClick={(e) => { e.stopPropagation(); setSelectedElementId(el.id, e.ctrlKey || e.metaKey); }}
           draggable
@@ -46,33 +61,78 @@ export const ElementListPanel: React.FC = () => {
             }
           }}
         >
-          <div className="element-item-header">
-            <div className="element-color-swatch" style={{ backgroundColor: colorMap[el.id] || 'var(--element-bg)' }} />
-            <span className="element-id-text">
-              {el.id} {groupingStatus && <span style={{fontSize: '0.7em', color: 'var(--accent)', marginLeft: '8px'}}>{groupingStatus}</span>}
-            </span>
-            <button
-              type="button"
-              className="element-delete-btn"
-              onClick={(ev) => { ev.stopPropagation(); removeElement(el.id); }}
-              title="Obriši element"
-            >
-              ×
+          {/* Collapse/expand toggle */}
+          {hasChildren ? (
+            <button className="tree-toggle" onClick={(e) => { e.stopPropagation(); toggleCollapse(el.id); }}>
+              {isCollapsed ? '▶' : '▼'}
             </button>
-          </div>
-          <div className="element-properties">
+          ) : (
+            <span className="tree-toggle-placeholder" />
+          )}
+
+          {/* Icon */}
+          <span className="tree-icon">{icon}</span>
+
+          {/* Element name + grouping status */}
+          <span className="tree-label">
+            {el.id}
+            {groupingStatus && <span className="tree-group-badge">{groupingStatus}</span>}
+          </span>
+
+          {/* Delete button */}
+          <button
+            type="button"
+            className="tree-delete-btn"
+            onClick={(ev) => { ev.stopPropagation(); removeElement(el.id); }}
+            title="Obriši element"
+          >
+            ×
+          </button>
+        </div>
+
+        {/* Expanded inline properties (only when selected) */}
+        {isSelected && (
+          <div className="tree-props" style={{ paddingLeft: 8 + (indent + 1) * 16 }}>
             <div className="property-row">
               <label>W:</label>
               <input type="number" className="size-input" value={el.width} onChange={ev => { ev.stopPropagation(); resizeElement(el.id, parseInt(ev.target.value) || el.width, el.height); }} />
               <label>H:</label>
               <input type="number" className="size-input" value={el.height} onChange={ev => { ev.stopPropagation(); resizeElement(el.id, el.width, parseInt(ev.target.value) || el.height); }} />
             </div>
+            <div className="parent-row">
+              <label style={{ fontSize: '10px' }}>Parent:</label>
+              <select
+                className="parent-select"
+                value={currentParent}
+                onChange={e => setElementParent(el.id, e.target.value)}
+                onClick={e => e.stopPropagation()}
+              >
+                <option value="container">container</option>
+                {elements.filter(e => e.id !== el.id).map(e => <option key={e.id} value={e.id}>{e.id}</option>)}
+              </select>
+              {currentParent !== 'container' && (
+                <button
+                  className="element-delete-btn"
+                  style={{ fontSize: '14px' }}
+                  onClick={(e) => { e.stopPropagation(); setElementParent(el.id, 'none'); }}
+                  title="Ukloni roditelja"
+                >
+                  ×
+                </button>
+              )}
+            </div>
           </div>
-        </div>
-        {children.map(c => renderElement(c, indent + 1))}
+        )}
+
+        {/* Children (recursive tree) */}
+        {!isCollapsed && children.map(c => renderTreeNode(c, indent + 1))}
       </div>
     );
   };
+
+  // ─── Container tree root ──────────────────────────────────────────
+  const containerChildren = getChildren('container');
+  const isContainerCollapsed = collapsedIds.has('container');
 
   const applyColor = () => {
     if (selectedElementIds.length > 0 && /^#[0-9a-fA-F]{6}$/i.test(colorInput)) {
@@ -94,8 +154,19 @@ export const ElementListPanel: React.FC = () => {
         </div>
       </div>
 
-      <div className="element-list-items">
-        {roots.map(el => renderElement(el))}
+      {/* Tree view */}
+      <div className="tree-view">
+        {/* Container as root */}
+        <div className="tree-node">
+          <div className="tree-node-row tree-root-row">
+            <button className="tree-toggle" onClick={() => toggleCollapse('container')}>
+              {isContainerCollapsed ? '▶' : '▼'}
+            </button>
+            <span className="tree-icon">🟦</span>
+            <span className="tree-label tree-root-label">container</span>
+          </div>
+          {!isContainerCollapsed && roots.map(el => renderTreeNode(el, 1))}
+        </div>
       </div>
 
       <div className="group-section">

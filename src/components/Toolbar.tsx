@@ -1,29 +1,59 @@
-import React from 'react';
-import { exportToCSS } from '../export/cssExport';
+import React, { useEffect } from 'react';
 import { useLayoutStore } from '../store/layoutStore';
 
-export const Toolbar: React.FC = () => {
-  const { ast, positions } = useLayoutStore();
+interface ToolbarProps {
+  onExport: () => void;
+  onHelp: () => void;
+}
 
-  const handleExport = () => {
-    const css = exportToCSS(ast, positions);
-    if (!css) return;
-    
-    const blob = new Blob([css], { type: 'text/css' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'layout.css';
-    a.click();
-    URL.revokeObjectURL(url);
-  };
+export const Toolbar: React.FC<ToolbarProps> = ({ onExport, onHelp }) => {
+  const { canUndo, canRedo, undo, redo } = useLayoutStore();
+
+  // Keyboard shortcuts: Ctrl+Z = undo, Ctrl+Y / Ctrl+Shift+Z = redo
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
+        e.preventDefault();
+        undo();
+      } else if ((e.ctrlKey || e.metaKey) && e.key === 'y') {
+        e.preventDefault();
+        redo();
+      } else if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'Z') {
+        e.preventDefault();
+        redo();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [undo, redo]);
 
   return (
     <div className="toolbar">
       <h1>Layout Algebra</h1>
-      <button className="export-btn" onClick={handleExport}>
-        Export CSS
-      </button>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+        <button
+          className="toolbar-btn"
+          onClick={undo}
+          disabled={!canUndo}
+          title="Undo (Ctrl+Z)"
+        >
+          ↩ Undo
+        </button>
+        <button
+          className="toolbar-btn"
+          onClick={redo}
+          disabled={!canRedo}
+          title="Redo (Ctrl+Y)"
+        >
+          ↪ Redo
+        </button>
+        <button className="export-btn" onClick={onExport}>
+          Export
+        </button>
+        <button className="help-btn" onClick={onHelp} title="Help / Documentation">
+          ?
+        </button>
+      </div>
     </div>
   );
 };

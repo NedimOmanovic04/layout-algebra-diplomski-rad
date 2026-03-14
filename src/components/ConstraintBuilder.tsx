@@ -2,12 +2,14 @@ import React, { useState } from 'react';
 
 const PROPERTIES = ['x', 'y', 'width', 'height', 'centerX', 'centerY', 'top', 'bottom', 'left', 'right'] as const;
 const OPERATORS = ['==', '>=', '<='] as const;
+const STRENGTHS = ['REQUIRED', 'STRONG', 'WEAK'] as const;
 
 export interface ConstraintData {
   id: string;
   left: string;
   op: string;
   right: string;
+  hasError?: boolean; // set true when constraint is in conflict
 }
 
 interface ConstraintBuilderProps {
@@ -138,6 +140,16 @@ const styles = {
     borderRadius: 4,
     fontSize: 11,
   },
+  itemError: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    padding: '6px 8px',
+    background: 'rgba(255,85,85,0.15)',
+    border: '1px solid #ff5555',
+    borderRadius: 4,
+    fontSize: 11,
+  },
   itemText: {
     flex: 1,
     color: '#f8f8f2',
@@ -153,6 +165,32 @@ const styles = {
     cursor: 'pointer',
     padding: '0 4px',
     lineHeight: 1,
+  },
+  mulDivRow: {
+    display: 'flex',
+    gap: 6,
+    alignItems: 'center',
+  },
+  strengthRow: {
+    display: 'flex',
+    gap: 4,
+  },
+  strengthBtn: {
+    flex: 1,
+    padding: '4px 6px',
+    border: '1px solid #44475a',
+    borderRadius: 4,
+    background: 'rgba(0,0,0,0.3)',
+    color: '#6272a4',
+    fontFamily: 'inherit',
+    fontSize: 10,
+    cursor: 'pointer',
+    textTransform: 'uppercase' as const,
+  },
+  strengthBtnActive: {
+    background: '#7c6fff',
+    color: '#12121f',
+    borderColor: '#7c6fff',
   },
 };
 
@@ -170,6 +208,9 @@ export const ConstraintBuilder: React.FC<ConstraintBuilderProps> = ({
   const [rightProp, setRightProp] = useState<string>('centerX');
   const [rightOffset, setRightOffset] = useState('');
   const [rightConstant, setRightConstant] = useState('0');
+  const [mulDivOp, setMulDivOp] = useState<'' | '*' | '/'>('');
+  const [mulDivValue, setMulDivValue] = useState('');
+  const [strength, setStrength] = useState<string>('REQUIRED');
 
   const elements = ['container', ...elementNames.filter((n) => n !== 'container')];
 
@@ -177,6 +218,14 @@ export const ConstraintBuilder: React.FC<ConstraintBuilderProps> = ({
   let rightExpr = '';
   if (rightMode === 'element') {
     rightExpr = rightElement && rightProp ? `${rightElement}.${rightProp}` : '';
+    // Add multiplier/divisor
+    if (rightExpr && mulDivOp && mulDivValue.trim()) {
+      const val = parseFloat(mulDivValue.trim());
+      if (!isNaN(val) && val !== 0) {
+        rightExpr += ` ${mulDivOp} ${val}`;
+      }
+    }
+    // Add offset
     if (rightExpr && rightOffset.trim()) {
       const off = rightOffset.trim();
       const num = parseFloat(off);
@@ -187,12 +236,15 @@ export const ConstraintBuilder: React.FC<ConstraintBuilderProps> = ({
   } else {
     rightExpr = rightConstant;
   }
+
+  // Add strength suffix if not REQUIRED
+  const strengthSuffix = strength !== 'REQUIRED' ? ` ${strength}` : '';
   const previewText = leftExpr && op && rightExpr
-    ? `CONSTRAINT ${leftExpr} ${op} ${rightExpr}`
+    ? `CONSTRAINT ${leftExpr} ${op} ${rightExpr}${strengthSuffix}`
     : '';
 
-  const constraintStr = leftExpr && op && rightExpr ? `${leftExpr} ${op} ${rightExpr}` : '';
-  const isDuplicate = Boolean(constraintStr && constraints.some(c => `${c.left} ${c.op} ${c.right}` === constraintStr));
+  const constraintStr = leftExpr && op && rightExpr ? `${leftExpr} ${op} ${rightExpr}${strengthSuffix}` : '';
+  const isDuplicate = Boolean(constraintStr && constraints.some(c => `${c.left} ${c.op} ${c.right}` === `${leftExpr} ${op} ${rightExpr}`));
   const canAdd = Boolean(constraintStr && !isDuplicate);
 
   const handleAdd = () => {
@@ -200,6 +252,12 @@ export const ConstraintBuilder: React.FC<ConstraintBuilderProps> = ({
     let right = '';
     if (rightMode === 'element') {
       right = rightElement && rightProp ? `${rightElement}.${rightProp}` : '';
+      if (right && mulDivOp && mulDivValue.trim()) {
+        const val = parseFloat(mulDivValue.trim());
+        if (!isNaN(val) && val !== 0) {
+          right += ` ${mulDivOp} ${val}`;
+        }
+      }
       if (right && rightOffset.trim()) {
         const off = rightOffset.trim();
         const num = parseFloat(off);
@@ -211,11 +269,13 @@ export const ConstraintBuilder: React.FC<ConstraintBuilderProps> = ({
       right = String(Number(rightConstant));
     }
     if (!right) return;
+    // Append strength suffix to right side for the DSL line
+    const finalRight = strength !== 'REQUIRED' ? `${right} ${strength}` : right;
     onAdd({
       id: crypto.randomUUID(),
       left: leftExpr,
       op,
-      right,
+      right: finalRight,
     });
   };
 
@@ -313,6 +373,30 @@ export const ConstraintBuilder: React.FC<ConstraintBuilderProps> = ({
               ))}
             </select>
           </div>
+          {/* Multiplier / Divisor */}
+          <div style={styles.row}>
+            <div style={styles.label}>Multiply / Divide (optional)</div>
+            <div style={styles.mulDivRow}>
+              <select
+                style={{ ...styles.select, width: '60px' }}
+                value={mulDivOp}
+                onChange={(e) => setMulDivOp(e.target.value as '' | '*' | '/')}
+              >
+                <option value="">None</option>
+                <option value="*">×</option>
+                <option value="/">/</option>
+              </select>
+              {mulDivOp && (
+                <input
+                  style={{ ...styles.input, width: '80px' }}
+                  type="text"
+                  placeholder="0.5"
+                  value={mulDivValue}
+                  onChange={(e) => setMulDivValue(e.target.value)}
+                />
+              )}
+            </div>
+          </div>
           <div style={styles.row}>
             <div style={styles.label}>Offset (e.g. +20)</div>
             <input
@@ -336,6 +420,23 @@ export const ConstraintBuilder: React.FC<ConstraintBuilderProps> = ({
         </div>
       )}
 
+      {/* Strength selector */}
+      <div style={styles.row}>
+        <div style={styles.label}>Priority</div>
+        <div style={styles.strengthRow}>
+          {STRENGTHS.map((s) => (
+            <button
+              key={s}
+              type="button"
+              style={{ ...styles.strengthBtn, ...(strength === s ? styles.strengthBtnActive : {}) }}
+              onClick={() => setStrength(s)}
+            >
+              {s}
+            </button>
+          ))}
+        </div>
+      </div>
+
       {previewText && (
         <div style={styles.preview}>{previewText}</div>
       )}
@@ -356,7 +457,8 @@ export const ConstraintBuilder: React.FC<ConstraintBuilderProps> = ({
             <div style={{ color: '#6272a4', fontSize: 11 }}>Nema constraints-a</div>
           ) : (
             constraints.map((c) => (
-              <div key={c.id} style={styles.item}>
+              <div key={c.id} style={c.hasError ? styles.itemError : styles.item}>
+                {c.hasError && <span title="Constraint je u konfliktu" style={{ color: '#ff5555', marginRight: 4 }}>⚠️</span>}
                 <span style={styles.itemText}>{c.left} {c.op} {c.right}</span>
                 <button
                   type="button"
