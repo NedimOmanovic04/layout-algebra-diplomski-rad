@@ -25,23 +25,23 @@ export const ElementListPanel: React.FC = () => {
     setCollapsedIds(next);
   };
 
-  // ─── Task 4: Tree view rendering ─────────────────────────────────
-  const renderTreeNode = (el: typeof elements[0], indent = 0) => {
+  const freeChildren = (parentId: string) => {
+    const children = getChildren(parentId);
+    children.forEach(c => setElementParent(c.id, 'none'));
+  };
+
+  const renderElement = (el: typeof elements[0], indent = 0) => {
     const children = getChildren(el.id);
-    const hasChildren = children.length > 0;
     const isDropTarget = dragOverId === el.id;
     const isSelected = selectedElementIds.includes(el.id);
+    const groupingStatus = groups.find(g => g.followerId === el.id) ? `[Slave]` : (groups.find(g => g.leaderId === el.id) ? `[Leader]` : '');
     const isCollapsed = collapsedIds.has(el.id);
     const currentParent = hierarchyMap[el.id] || 'container';
-    const groupingStatus = groups.find(g => g.followerId === el.id) ? '[Slave]' : (groups.find(g => g.leaderId === el.id) ? '[Leader]' : '');
-
-    // Icon: container-like elements (those with children) get a different icon
-    const icon = hasChildren ? '🟦' : '📄';
-
+    
     return (
-      <div key={el.id} className="tree-node">
+      <div key={el.id} className="element-list-tree">
         <div
-          className={`tree-node-row ${isSelected ? 'tree-selected' : ''} ${isDropTarget ? 'tree-drag-over' : ''}`}
+          className={`element-list-item ${isSelected ? 'selected' : ''} ${isDropTarget ? 'drag-over' : ''}`}
           style={{ paddingLeft: 8 + indent * 16 }}
           onClick={(e) => { e.stopPropagation(); setSelectedElementId(el.id, e.ctrlKey || e.metaKey); }}
           draggable
@@ -61,38 +61,26 @@ export const ElementListPanel: React.FC = () => {
             }
           }}
         >
-          {/* Collapse/expand toggle */}
-          {hasChildren ? (
-            <button className="tree-toggle" onClick={(e) => { e.stopPropagation(); toggleCollapse(el.id); }}>
-              {isCollapsed ? '▶' : '▼'}
+          <div className="element-item-header">
+            {children.length > 0 && (
+              <button className="collapse-toggle" onClick={(e) => { e.stopPropagation(); toggleCollapse(el.id); }}>
+                {isCollapsed ? '▶' : '▼'}
+              </button>
+            )}
+            <div className="element-color-swatch" style={{ backgroundColor: colorMap[el.id] || 'var(--element-bg)' }} />
+            <span className="element-id-text">
+              {el.id} {groupingStatus && <span style={{fontSize: '0.7em', color: 'var(--accent)', marginLeft: '8px'}}>{groupingStatus}</span>}
+            </span>
+            <button
+              type="button"
+              className="element-delete-btn"
+              onClick={(ev) => { ev.stopPropagation(); removeElement(el.id); }}
+              title="Obriši element"
+            >
+              ×
             </button>
-          ) : (
-            <span className="tree-toggle-placeholder" />
-          )}
-
-          {/* Icon */}
-          <span className="tree-icon">{icon}</span>
-
-          {/* Element name + grouping status */}
-          <span className="tree-label">
-            {el.id}
-            {groupingStatus && <span className="tree-group-badge">{groupingStatus}</span>}
-          </span>
-
-          {/* Delete button */}
-          <button
-            type="button"
-            className="tree-delete-btn"
-            onClick={(ev) => { ev.stopPropagation(); removeElement(el.id); }}
-            title="Obriši element"
-          >
-            ×
-          </button>
-        </div>
-
-        {/* Expanded inline properties (only when selected) */}
-        {isSelected && (
-          <div className="tree-props" style={{ paddingLeft: 8 + (indent + 1) * 16 }}>
+          </div>
+          <div className="element-properties">
             <div className="property-row">
               <label>W:</label>
               <input type="number" className="size-input" value={el.width} onChange={ev => { ev.stopPropagation(); resizeElement(el.id, parseInt(ev.target.value) || el.width, el.height); }} />
@@ -101,9 +89,9 @@ export const ElementListPanel: React.FC = () => {
             </div>
             <div className="parent-row">
               <label style={{ fontSize: '10px' }}>Parent:</label>
-              <select
-                className="parent-select"
-                value={currentParent}
+              <select 
+                className="parent-select" 
+                value={currentParent} 
                 onChange={e => setElementParent(el.id, e.target.value)}
                 onClick={e => e.stopPropagation()}
               >
@@ -111,9 +99,9 @@ export const ElementListPanel: React.FC = () => {
                 {elements.filter(e => e.id !== el.id).map(e => <option key={e.id} value={e.id}>{e.id}</option>)}
               </select>
               {currentParent !== 'container' && (
-                <button
-                  className="element-delete-btn"
-                  style={{ fontSize: '14px' }}
+                <button 
+                  className="element-delete-btn" 
+                  style={{ fontSize: '14px' }} 
                   onClick={(e) => { e.stopPropagation(); setElementParent(el.id, 'none'); }}
                   title="Ukloni roditelja"
                 >
@@ -121,18 +109,35 @@ export const ElementListPanel: React.FC = () => {
                 </button>
               )}
             </div>
+            {children.length > 0 && (
+              <>
+                <div style={{ marginTop: '8px', fontSize: '10px', color: '#6272a4', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Djeca:</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginTop: '4px' }}>
+                  {children.map(c => (
+                    <div key={c.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'rgba(0,0,0,0.1)', padding: '2px 6px', borderRadius: '3px' }}>
+                      <span style={{ fontSize: '11px' }}>{c.id}</span>
+                      <button 
+                        className="element-delete-btn" 
+                        style={{ fontSize: '12px', padding: '0 4px' }} 
+                        onClick={(e) => { e.stopPropagation(); setElementParent(c.id, 'none'); }}
+                        title={`Ukloni ${c.id}`}
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
+                </div>
+                <button className="free-children-btn" style={{ marginTop: '8px' }} onClick={(e) => { e.stopPropagation(); freeChildren(el.id); }}>
+                  Oslobodi svu djecu
+                </button>
+              </>
+            )}
           </div>
-        )}
-
-        {/* Children (recursive tree) */}
-        {!isCollapsed && children.map(c => renderTreeNode(c, indent + 1))}
+        </div>
+        {!isCollapsed && children.map(c => renderElement(c, indent + 1))}
       </div>
     );
   };
-
-  // ─── Container tree root ──────────────────────────────────────────
-  const containerChildren = getChildren('container');
-  const isContainerCollapsed = collapsedIds.has('container');
 
   const applyColor = () => {
     if (selectedElementIds.length > 0 && /^#[0-9a-fA-F]{6}$/i.test(colorInput)) {
@@ -154,19 +159,8 @@ export const ElementListPanel: React.FC = () => {
         </div>
       </div>
 
-      {/* Tree view */}
-      <div className="tree-view">
-        {/* Container as root */}
-        <div className="tree-node">
-          <div className="tree-node-row tree-root-row">
-            <button className="tree-toggle" onClick={() => toggleCollapse('container')}>
-              {isContainerCollapsed ? '▶' : '▼'}
-            </button>
-            <span className="tree-icon">🟦</span>
-            <span className="tree-label tree-root-label">container</span>
-          </div>
-          {!isContainerCollapsed && roots.map(el => renderTreeNode(el, 1))}
-        </div>
+      <div className="element-list-items">
+        {roots.map(el => renderElement(el))}
       </div>
 
       <div className="group-section">
