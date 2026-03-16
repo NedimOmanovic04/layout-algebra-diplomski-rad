@@ -657,10 +657,56 @@ body {
   background-color: rgba(189, 147, 249, 0.2);
 }
 
-.element-list-tree {
+.tree-node {
   display: flex;
   flex-direction: column;
   gap: 2px;
+  position: relative;
+}
+
+.tree-children {
+  margin-left: 20px;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* Main vertical line for the children container */
+.tree-children::before {
+  content: '';
+  position: absolute;
+  top: -5px; /* Adjust to connect better to parent */
+  bottom: 12px; /* Don't go all the way to bottom of last child */
+  left: -12px;
+  width: 1px;
+  background-color: #6272a4; /* Brighter purple for visibility */
+  z-index: 1;
+}
+
+/* Horizontal line pointing to each child item */
+.tree-children > .tree-node::before {
+  content: '';
+  position: absolute;
+  top: 15px; /* Align with middle of the item header */
+  left: -12px;
+  width: 12px;
+  height: 1px;
+  background-color: #6272a4;
+  z-index: 1;
+}
+
+/* Small square dot at the joint for a premium feel */
+.tree-children > .tree-node::after {
+  content: '';
+  position: absolute;
+  top: 13px;
+  left: -14px;
+  width: 4px;
+  height: 4px;
+  background-color: #6272a4;
+  border-radius: 1px;
+  z-index: 2;
 }
 
 .element-item-header {

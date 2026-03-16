@@ -35,27 +35,32 @@ export class LayoutSolver {
   }
 
   update(ast: AST, containerWidth: number, containerHeight: number) {
-    // Save current local positions before re-creating the solver
-    const oldPositions: Record<string, { localLeft: number; localTop: number }> = {};
+    // 1. Build hierarchy tree for translation detection
+    const tree: Record<string, string> = {};
+    ast.hierarchy.forEach(h => tree[h.childId] = h.parentId);
+
+    // 2. Save current local and global positions before re-creating the solver
+    // This allows us to detect parent changes and adjust local coords to keep GLOBAL pos stationary.
+    const prevPositions: Record<string, { left: number; top: number; localLeft: number; localTop: number; parentId: string }> = {};
     for (const id in this.variables) {
       if (id !== 'container' && this.variables[id].localLeft && this.variables[id].localTop) {
-        oldPositions[id] = {
+        prevPositions[id] = {
+          left: this.variables[id].left.value() || 0,
+          top: this.variables[id].top.value() || 0,
           localLeft: this.variables[id].localLeft.value() || 0,
           localTop: this.variables[id].localTop.value() || 0,
+          parentId: (this.savedPositions[id] as any)?.parentId || 'container'
         };
       }
     }
-    Object.assign(this.savedPositions, oldPositions);
 
     this.solver = new kiwi.Solver();
     this.variables = {};
     this.editVars.clear();
 
-    // Build hierarchy tree
-    const tree: Record<string, string> = {};
-    ast.hierarchy.forEach(h => tree[h.childId] = h.parentId);
+    const newSaved: Record<string, { localLeft: number; localTop: number; parentId: string }> = {};
 
-    // 1. Create all variables first
+    // 3. Create all variables first
     for (const el of ast.elements) {
       this.variables[el.id] = {
         left: new kiwi.Variable(`${el.id}.left`),
@@ -69,12 +74,37 @@ export class LayoutSolver {
       };
       
       if (el.id !== 'container') {
-        this.variables[el.id].localLeft = new kiwi.Variable(`${el.id}.localLeft`);
-        this.variables[el.id].localTop = new kiwi.Variable(`${el.id}.localTop`);
+        const v = this.variables[el.id];
+        v.localLeft = new kiwi.Variable(`${el.id}.localLeft`);
+        v.localTop = new kiwi.Variable(`${el.id}.localTop`);
+        
+        const prev = prevPositions[el.id];
+        const newParentId = tree[el.id] || 'container';
+        
+        if (prev) {
+          if (prev.parentId !== newParentId) {
+            // Parent changed! Calculate new local coords so element stays at the same GLOBAL position
+            const newParentPos = prevPositions[newParentId] || { left: 0, top: 0 };
+            newSaved[el.id] = {
+              localLeft: prev.left - (newParentPos.left || 0),
+              localTop: prev.top - (newParentPos.top || 0),
+              parentId: newParentId
+            };
+          } else {
+            newSaved[el.id] = {
+              localLeft: prev.localLeft,
+              localTop: prev.localTop,
+              parentId: newParentId
+            };
+          }
+        } else {
+          newSaved[el.id] = { localLeft: 0, localTop: 0, parentId: newParentId };
+        }
       }
     }
+    this.savedPositions = newSaved as any;
 
-    // 2. Add structural constraints
+    // 4. Add structural constraints
     for (const el of ast.elements) {
       const v = this.variables[el.id];
 
@@ -85,12 +115,10 @@ export class LayoutSolver {
          this.solver.addConstraint(new kiwi.Constraint(new kiwi.Expression(v.left), kiwi.Operator.Eq, new kiwi.Expression(0), kiwi.Strength.required));
          this.solver.addConstraint(new kiwi.Constraint(new kiwi.Expression(v.top), kiwi.Operator.Eq, new kiwi.Expression(0), kiwi.Strength.required));
       } else {
-        // Percentage dimensions: generate constraints instead of fixed sizes
         const parentId = tree[el.id] || 'container';
         const pVar = this.variables[parentId];
 
         if (el.widthPercent !== undefined && pVar) {
-          // card.width == parent.width * (percent/100)
           const factor = el.widthPercent / 100;
           this.solver.addConstraint(new kiwi.Constraint(
             new kiwi.Expression(v.width),
@@ -115,14 +143,13 @@ export class LayoutSolver {
         }
       }
 
-      // Relational constraints
       this.solver.addConstraint(new kiwi.Constraint(new kiwi.Expression(v.right), kiwi.Operator.Eq, new kiwi.Expression(v.left, v.width)));
       this.solver.addConstraint(new kiwi.Constraint(new kiwi.Expression(v.bottom), kiwi.Operator.Eq, new kiwi.Expression(v.top, v.height)));
       this.solver.addConstraint(new kiwi.Constraint(new kiwi.Expression([-1, v.centerX], v.left, [0.5, v.width]), kiwi.Operator.Eq, new kiwi.Expression(0)));
       this.solver.addConstraint(new kiwi.Constraint(new kiwi.Expression([-1, v.centerY], v.top, [0.5, v.height]), kiwi.Operator.Eq, new kiwi.Expression(0)));
     }
 
-    // 3. Process Parent/Child hierarchy
+    // 5. Process Parent/Child hierarchy
     for (const el of ast.elements) {
       if (el.id === 'container') continue;
 
@@ -130,7 +157,8 @@ export class LayoutSolver {
       const pVar = this.variables[parentId];
       const v = this.variables[el.id];
 
-      // left = parent.left + localLeft
+      if (!pVar) continue;
+
       this.solver.addConstraint(new kiwi.Constraint(
         new kiwi.Expression(v.left), kiwi.Operator.Eq, new kiwi.Expression(pVar.left, v.localLeft)
       ));
@@ -153,8 +181,7 @@ export class LayoutSolver {
       this.solver.addEditVariable(v.localLeft, kiwi.Strength.weak);
       this.solver.addEditVariable(v.localTop, kiwi.Strength.weak);
 
-      // Restore saved local positions or default to 0
-      const saved = this.savedPositions[el.id];
+      const saved = (this.savedPositions as any)[el.id];
       if (saved) {
         this.solver.suggestValue(v.localLeft, saved.localLeft || 0);
         this.solver.suggestValue(v.localTop, saved.localTop || 0);
@@ -164,7 +191,7 @@ export class LayoutSolver {
       }
     }
 
-    // 4. Apply DSL constraints (with multiplier, offset, and strength support)
+    // 6. Apply DSL constraints (with multiplier, offset, and strength support)
     for (const c of ast.constraints) {
       const vLeft = this.variables[c.leftId]?.[c.leftProp];
       if (!vLeft) continue;
@@ -173,37 +200,24 @@ export class LayoutSolver {
       if (c.operator === '>=') op = kiwi.Operator.Ge;
       if (c.operator === '<=') op = kiwi.Operator.Le;
 
-      // Determine constraint strength
       const constraintStrength = this.mapStrength(c.strength || 'required');
-
       let rightExpr: kiwi.Expression | null = null;
 
       if (c.rightConstant !== undefined) {
-        // Right side is a constant (multiplier not applicable to constants)
         rightExpr = new kiwi.Expression(c.rightConstant + c.offset);
       } else if (c.rightId && c.rightProp) {
         const vRight = this.variables[c.rightId]?.[c.rightProp];
         if (!vRight) continue;
-
         const multiplier = c.multiplier !== undefined ? c.multiplier : 1;
-
         if (multiplier === 1) {
-          // Simple: rightVar + offset
           rightExpr = new kiwi.Expression(vRight, c.offset);
         } else {
-          // Multiplier: rightVar * multiplier + offset
           rightExpr = new kiwi.Expression([multiplier, vRight], c.offset);
         }
       }
 
       if (!rightExpr) continue;
-
-      this.solver.addConstraint(new kiwi.Constraint(
-        new kiwi.Expression(vLeft),
-        op,
-        rightExpr,
-        constraintStrength
-      ));
+      this.solver.addConstraint(new kiwi.Constraint(new kiwi.Expression(vLeft), op, rightExpr, constraintStrength));
     }
 
     this.solver.updateVariables();
@@ -213,18 +227,22 @@ export class LayoutSolver {
     if (!this.variables[id]) return;
     try {
       if (!this.editVars.has(id)) {
-        this.solver.addEditVariable(this.variables[id].left, kiwi.Strength.strong);
-        this.solver.addEditVariable(this.variables[id].top, kiwi.Strength.strong);
+        // Child's drag uses medium strength so parent's strong lock will absolutely overpower it
+        this.solver.addEditVariable(this.variables[id].left, kiwi.Strength.medium);
+        this.solver.addEditVariable(this.variables[id].top, kiwi.Strength.medium);
         this.editVars.add(id);
 
         // Lock parents
         for (const lid of lockedIds) {
           if (this.variables[lid] && !this.editVars.has(lid)) {
-             this.solver.addEditVariable(this.variables[lid].left, kiwi.Strength.required);
-             this.solver.addEditVariable(this.variables[lid].top, kiwi.Strength.required);
-             this.solver.suggestValue(this.variables[lid].left, this.variables[lid].left.value());
-             this.solver.suggestValue(this.variables[lid].top, this.variables[lid].top.value());
-             this.editVars.add(lid);
+             try {
+               // Use strong instead of required, as required edit variables throw in Cassowary
+               this.solver.addEditVariable(this.variables[lid].left, kiwi.Strength.strong);
+               this.solver.addEditVariable(this.variables[lid].top, kiwi.Strength.strong);
+               this.solver.suggestValue(this.variables[lid].left, this.variables[lid].left.value());
+               this.solver.suggestValue(this.variables[lid].top, this.variables[lid].top.value());
+               this.editVars.add(lid);
+             } catch(e) { console.error("Could not lock parent", lid, e); }
           }
         }
       }
@@ -255,15 +273,13 @@ export class LayoutSolver {
           }
        }
 
-       // suggest the new achieved local position to the weak local vars
        const ll = this.variables[id].localLeft.value();
        const lt = this.variables[id].localTop.value();
        this.solver.suggestValue(this.variables[id].localLeft, ll);
        this.solver.suggestValue(this.variables[id].localTop, lt);
        this.solver.updateVariables();
 
-       // Save the local position so it survives solver re-creation
-       this.savedPositions[id] = { localLeft: ll, localTop: lt };
+       this.savedPositions[id] = { localLeft: ll, localTop: lt } as any;
     } catch(e) { /* ignore */ }
   }
 
@@ -282,3 +298,4 @@ export class LayoutSolver {
     return pos;
   }
 }
+

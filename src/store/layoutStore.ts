@@ -162,6 +162,7 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
     if (!keepOverrides) {
       set({ positionOverrides: {} });
     }
+    const oldPositions = get().positions;
     const { ast, error } = parseDSL(code);
     if (!error && ast) {
       try {
@@ -170,23 +171,37 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
         const cw = container?.width ?? 800;
         const ch = container?.height ?? 600;
         solver.update(ast, cw, ch);
-        const positions = solver.getPositions();
+        const solverPositions = solver.getPositions();
         
         // Post-solve: apply AVOID collisions if any
-        resolveOverlaps(ast, positions);
+        resolveOverlaps(ast, solverPositions);
         
-        // Apply position overrides (from manual resize/drag) - override solver result
-        const overrides = get().positionOverrides;
-        const merged = { ...positions };
-        for (const id of Object.keys(overrides)) {
-          if (merged[id]) {
-            merged[id] = { ...overrides[id] };
+        // Apply position overrides (from manual resize/drag) 
+        // Logic: if an element has an override, it means user manual adjustment.
+        // If the solver says it moved (e.g. parent moved or constraints changed),
+        // we should apply that solver delta to the override so it stays consistent relative to its logic.
+        const currentOverrides = { ...get().positionOverrides };
+        const finalPositions = { ...solverPositions };
+        
+        for (const id of Object.keys(currentOverrides)) {
+          if (finalPositions[id]) {
+            const oldP = oldPositions[id];
+            const newS = solverPositions[id];
+            if (oldP && newS) {
+              // Apply the delta from the solver to the existing override
+              const dx = newS.left - oldP.left;
+              const dy = newS.top - oldP.top;
+              if (dx !== 0 || dy !== 0) {
+                 currentOverrides[id].left += dx;
+                 currentOverrides[id].top += dy;
+              }
+            }
+            finalPositions[id] = { ...currentOverrides[id] };
           }
         }
         
-        set({ ast, error: null, positions: merged });
+        set({ ast, error: null, positions: finalPositions, positionOverrides: currentOverrides });
       } catch (e: any) {
-        // Task 4: User-friendly error messages
         const message = friendlyError(e.message || String(e), code);
         set({ error: message, ast: null });
       }
