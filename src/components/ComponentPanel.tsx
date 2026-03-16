@@ -25,7 +25,6 @@ export const ComponentPanel: React.FC = () => {
 
   return (
     <div className="component-panel">
-      <div className="component-panel-header">Components</div>
       <div className="component-panel-list">
         {ELEMENT_TEMPLATES.map(tpl => (
           <button

@@ -109,27 +109,52 @@ body {
 
 /* Help panel slide-in animation */
 @keyframes slideInRight {
-  from { transform: translateX(100%); opacity: 0; }
-  to { transform: translateX(0); opacity: 1; }
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
 }
 
 /* Resizable Panel Styles */
+.collapsed-header-horizontal {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 10px;
+  height: 100%;
+  gap: 15px;
+}
+
+.collapsed-title-horizontal {
+  color: #8be9fd;
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  white-space: nowrap;
+}
+
 .resizable-panel {
   display: flex;
   flex-direction: column;
   background-color: var(--panel-bg);
   position: relative;
-  transition: width 0.2s ease;
+  transition: width 0.2s ease, height 0.2s ease;
   flex-shrink: 0;
+  overflow: hidden;
 }
 
 .resizable-panel.expanded {
-  transition: none; /* Disable transition during drag */
+  transition: none;
+  /* Disable transition during drag */
 }
 
 .resizable-panel.collapsed {
   cursor: default;
-  align-items: center;
 }
 
 .panel-header-row {
@@ -139,6 +164,7 @@ body {
   padding: 8px 12px;
   background-color: rgba(0, 0, 0, 0.2);
   border-bottom: 1px solid var(--border-color);
+  flex-shrink: 0;
 }
 
 .panel-title-text {
@@ -197,19 +223,38 @@ body {
 
 .resizer-handle {
   position: absolute;
-  top: 0;
-  bottom: 0;
-  width: 10px;
   z-index: 10;
   cursor: col-resize;
 }
 
 .resizer-handle.right {
+  top: 0;
+  bottom: 0;
+  width: 10px;
   right: -5px;
 }
 
 .resizer-handle.left {
+  top: 0;
+  bottom: 0;
+  width: 10px;
   left: -5px;
+}
+
+.resizer-handle.bottom {
+  left: 0;
+  right: 0;
+  height: 10px;
+  bottom: -5px;
+  cursor: row-resize;
+}
+
+.resizer-handle.top {
+  left: 0;
+  right: 0;
+  height: 10px;
+  top: -5px;
+  cursor: row-resize;
 }
 
 .resizer-handle:hover {
@@ -221,7 +266,9 @@ body {
 }
 
 /* Ensure inner panels fill the resizable wrapper */
-.left-panel, .center-panel, .far-right-panel {
+.left-panel,
+.center-panel,
+.far-right-panel {
   width: 100% !important;
   min-width: 0 !important;
   border: none !important;
@@ -256,6 +303,7 @@ body {
 .right-panel {
   flex: 1;
   display: flex;
+  flex-direction: column;
   min-width: 0;
   min-height: 0;
   background-color: var(--bg-color);
@@ -395,8 +443,6 @@ body {
   padding: 20px;
   overflow: auto;
   display: flex;
-  justify-content: flex-start;
-  align-items: flex-start;
 }
 
 .canvas-wrapper-scroll {
@@ -416,6 +462,7 @@ body {
   overflow: hidden;
   border-radius: 4px;
   flex-shrink: 0;
+  margin: auto;
 }
 
 .canvas-container::before {
@@ -477,7 +524,7 @@ body {
   background-color: var(--accent);
   border: 1px solid #fff;
   border-radius: 2px;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.4);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
   cursor: nwse-resize;
 }
 
@@ -486,10 +533,25 @@ body {
   cursor: nesw-resize;
 }
 
-.resize-handle-nw { top: -5px; left: -5px; }
-.resize-handle-ne { top: -5px; right: -5px; }
-.resize-handle-sw { bottom: -5px; left: -5px; }
-.resize-handle-se { bottom: -5px; right: -5px; }
+.resize-handle-nw {
+  top: -5px;
+  left: -5px;
+}
+
+.resize-handle-ne {
+  top: -5px;
+  right: -5px;
+}
+
+.resize-handle-sw {
+  bottom: -5px;
+  left: -5px;
+}
+
+.resize-handle-se {
+  bottom: -5px;
+  right: -5px;
+}
 
 /* Edge handles */
 .resize-handle-n,

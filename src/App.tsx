@@ -67,52 +67,68 @@ function App() {
         onHelp={() => setShowHelp(true)}
       />
       <div className="main-content">
+        {/* Leftmost Sidebar: DSL Editor */}
         <ResizablePanel
-           id="editor"
-           title="DSL Editor"
-           defaultWidth={350}
-           minWidth={200}
-           maxWidth={800}
-           direction="right"
-           className="left-panel-wrapper"
+          id="editor"
+          title="DSL Editor"
+          defaultSize={350}
+          minSize={200}
+          maxSize={800}
+          direction="right"
+          className="left-panel-wrapper"
         >
-          <div className="left-panel">
-            <CodeEditor />
-            <ConstraintBuilder
-              elementNames={elementNames}
-              constraints={constraints}
-              onAdd={handleAddConstraint}
-              onRemove={handleRemoveConstraint}
-            />
+          <div className="left-panel" style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+            <ResizablePanel
+               id="dsl-code-panel"
+               title="Code"
+               hideHeader={true}
+               defaultSize={typeof window !== 'undefined' ? window.innerHeight * 0.4 : 350}
+               minSize={100}
+               maxSize={1000}
+               direction="bottom"
+            >
+               <CodeEditor />
+            </ResizablePanel>
+            <div style={{ flex: 1, overflowY: 'auto' }}>
+               <ConstraintBuilder
+                 elementNames={elementNames}
+                 constraints={constraints}
+                 onAdd={handleAddConstraint}
+                 onRemove={handleRemoveConstraint}
+               />
+            </div>
           </div>
         </ResizablePanel>
 
+        {/* Center-Left Sidebar: Components */}
         <ResizablePanel
-           id="components"
-           title="Components"
-           defaultWidth={250}
-           minWidth={150}
-           maxWidth={500}
-           direction="right"
-           className="center-panel-wrapper"
+          id="components"
+          title="Components"
+          defaultSize={250}
+          minSize={150}
+          maxSize={500}
+          direction="right"
+          className="components-panel-wrapper"
         >
           <div className="center-panel">
             <ComponentPanel />
           </div>
         </ResizablePanel>
 
+        {/* Adaptive Center: Visual Canvas */}
         <div className="right-panel">
-           <Canvas />
+          <Canvas />
         </div>
 
+        {/* Rightmost Sidebar: Document Elements */}
         <ResizablePanel
-           id="elements"
-           title="Document Elements"
-           defaultWidth={300}
-           minWidth={200}
-           maxWidth={600}
-           direction="left"
-           className="far-right-panel-wrapper"
+          id="elements"
+          title="Document Elements"
+          defaultSize={300}
+          minSize={200}
+          maxSize={600}
+          direction="left"
+          className="far-right-panel-wrapper"
         >
           <div className="far-right-panel">
             <ElementListPanel />

@@ -6,7 +6,6 @@ export const CodeEditor: React.FC = () => {
 
   return (
     <div className="code-editor-wrapper">
-      <div className="code-editor-header">DSL Editor</div>
       <textarea
         className="code-editor-textarea"
         value={code}

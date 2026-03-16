@@ -3,27 +3,30 @@ import React, { useState, useEffect, useRef } from 'react';
 interface ResizablePanelProps {
   id: string;
   title?: string;
-  defaultWidth: number;
-  minWidth: number;
-  maxWidth: number;
-  direction: 'left' | 'right';
+  defaultSize: number;
+  minSize: number;
+  maxSize: number;
+  direction: 'left' | 'right' | 'top' | 'bottom';
   children: React.ReactNode;
   className?: string;
+  hideHeader?: boolean;
 }
 
 export const ResizablePanel: React.FC<ResizablePanelProps> = ({
   id,
   title,
-  defaultWidth,
-  minWidth,
-  maxWidth,
+  defaultSize,
+  minSize,
+  maxSize,
   direction,
   children,
-  className = ''
+  className = '',
+  hideHeader = false
 }) => {
   const [isCollapsed, setIsCollapsed] = useState(false);
-  const [width, setWidth] = useState(defaultWidth);
+  const [size, setSize] = useState(defaultSize);
   const isDragging = useRef(false);
+  const isVertical = direction === 'top' || direction === 'bottom';
 
   // Load from localStorage on mount
   useEffect(() => {
@@ -31,7 +34,7 @@ export const ResizablePanel: React.FC<ResizablePanelProps> = ({
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-        if (parsed.width) setWidth(parsed.width);
+        if (parsed.size) setSize(parsed.size);
         if (parsed.isCollapsed !== undefined) setIsCollapsed(parsed.isCollapsed);
       } catch (e) {
         // ignore
@@ -41,31 +44,32 @@ export const ResizablePanel: React.FC<ResizablePanelProps> = ({
 
   // Save to localStorage on change
   useEffect(() => {
-    localStorage.setItem(`panel_${id}`, JSON.stringify({ width, isCollapsed }));
-  }, [width, isCollapsed, id]);
+    localStorage.setItem(`panel_${id}`, JSON.stringify({ size, isCollapsed }));
+  }, [size, isCollapsed, id]);
 
   const onMouseDown = (e: React.MouseEvent) => {
     e.preventDefault();
     isDragging.current = true;
-    document.body.style.cursor = 'col-resize';
+    document.body.style.cursor = isVertical ? 'row-resize' : 'col-resize';
     
-    const startX = e.clientX;
-    const startWidth = width;
+    const startCoord = isVertical ? e.clientY : e.clientX;
+    const startSize = size;
 
     const onMouseMove = (moveEvent: MouseEvent) => {
       if (!isDragging.current) return;
       
-      const dx = moveEvent.clientX - startX;
-      let newWidth = startWidth;
+      const currentCoord = isVertical ? moveEvent.clientY : moveEvent.clientX;
+      const d = currentCoord - startCoord;
+      let newSize = startSize;
       
-      if (direction === 'right') {
-        newWidth = startWidth + dx;
+      if (direction === 'right' || direction === 'bottom') {
+        newSize = startSize + d;
       } else {
-        newWidth = startWidth - dx;
+        newSize = startSize - d;
       }
       
-      newWidth = Math.max(minWidth, Math.min(maxWidth, newWidth));
-      setWidth(newWidth);
+      newSize = Math.max(minSize, Math.min(maxSize, newSize));
+      setSize(newSize);
     };
 
     const onMouseUp = () => {
@@ -81,27 +85,33 @@ export const ResizablePanel: React.FC<ResizablePanelProps> = ({
 
   const toggleCollapse = () => setIsCollapsed(!isCollapsed);
 
+  const style: React.CSSProperties = isVertical 
+    ? { height: isCollapsed ? 40 : size, borderTop: direction === 'bottom' ? '1px solid var(--border-color)' : 'none', borderBottom: direction === 'top' ? '1px solid var(--border-color)' : 'none' }
+    : { width: isCollapsed ? 40 : size, borderRight: direction === 'right' ? '1px solid var(--border-color)' : 'none', borderLeft: direction === 'left' ? '1px solid var(--border-color)' : 'none' };
+
   if (isCollapsed) {
     return (
-      <div className={`resizable-panel collapsed ${className}`} style={{ width: 40, borderRight: direction === 'right' ? '1px solid var(--border-color)' : 'none', borderLeft: direction === 'left' ? '1px solid var(--border-color)' : 'none' }}>
-        <div className="collapsed-header">
+      <div className={`resizable-panel collapsed ${className}`} style={style}>
+        <div className={isVertical ? "collapsed-header-horizontal" : "collapsed-header"}>
            <button className="collapse-toggle-btn" onClick={toggleCollapse} title="Prikaži panel">
-             {direction === 'right' ? '▶' : '◀'}
+             {direction === 'right' ? '▶' : (direction === 'left' ? '◀' : (direction === 'bottom' ? '▲' : '▼')) }
            </button>
-           {title && <div className="collapsed-title">{title}</div>}
+           {title && <div className={isVertical ? "collapsed-title-horizontal" : "collapsed-title"}>{title}</div>}
         </div>
       </div>
     );
   }
 
   return (
-    <div className={`resizable-panel expanded ${className}`} style={{ width, borderRight: direction === 'right' ? '1px solid var(--border-color)' : 'none', borderLeft: direction === 'left' ? '1px solid var(--border-color)' : 'none' }}>
-      <div className="panel-header-row">
-        {title && <span className="panel-title-text">{title}</span>}
-        <button className="collapse-toggle-btn" onClick={toggleCollapse} title="Sakrij panel">
-          {direction === 'right' ? '◀' : '▶'}
-        </button>
-      </div>
+    <div className={`resizable-panel expanded ${className}`} style={style}>
+      {!hideHeader && (
+        <div className="panel-header-row">
+          {title && <span className="panel-title-text">{title}</span>}
+          <button className="collapse-toggle-btn" onClick={toggleCollapse} title="Sakrij panel">
+            {direction === 'right' ? '◀' : (direction === 'left' ? '▶' : (direction === 'bottom' ? '▼' : '▲'))}
+          </button>
+        </div>
+      )}
       <div className="panel-content-area">
         {children}
       </div>
@@ -113,3 +123,4 @@ export const ResizablePanel: React.FC<ResizablePanelProps> = ({
     </div>
   );
 };
+

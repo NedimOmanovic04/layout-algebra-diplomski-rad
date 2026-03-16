@@ -147,7 +147,6 @@ export const ElementListPanel: React.FC = () => {
 
   return (
     <div className="element-list-panel">
-      <div className="panel-header">Document Elements</div>
 
       <div className="container-size-section">
         <div className="panel-subheader">Container</div>
