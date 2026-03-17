@@ -23,7 +23,7 @@ interface LayoutState {
   selectionOrder: string[];
   setCode: (code: string, opts?: { keepPositionOverrides?: boolean; skipHistory?: boolean }) => void;
   setSelectedElementId: (id: string, multi?: boolean) => void;
-  addElement: (type: string, width: number, height: number) => void;
+  addElement: (type: string, width: number, height: number, x?: number, y?: number) => void;
   resizeElement: (id: string, newWidth: number, newHeight: number, newLeft?: number, newTop?: number) => void;
   setPositionsDirect: (positions: Record<string, { left: number; top: number; width: number; height: number }>) => void;
   setPositionOverride: (id: string, rect: { left: number; top: number; width: number; height: number } | null) => void;
@@ -75,14 +75,14 @@ function friendlyError(rawError: string, code: string): string {
       .filter(l => l.trim().startsWith('CONSTRAINT '))
       .map(l => l.trim());
     if (constraintLines.length > 0) {
-      return `Konflikt u ograničenjima: Neka ograničenja su kontradiktorni i ne mogu se istovremeno zadovoljiti.\n\nAktivna ograničenja:\n${constraintLines.map(l => '  • ' + l).join('\n')}\n\nPokušajte ukloniti ili oslabiti neko ograničenje (npr. dodajte WEAK na kraj).`;
+      return `Constraint Conflict: Some constraints are contradictory and cannot be satisfied simultaneously.\n\nActive constraints:\n${constraintLines.map(l => '  • ' + l).join('\n')}\n\nTry removing or weakening a constraint (e.g., add WEAK at the end).`;
     }
-    return 'Konflikt u ograničenjima: Ograničenja su kontradiktorni. Pokušajte ukloniti ili oslabiti neko ograničenje.';
+    return 'Constraint Conflict: Constraints are contradictory. Try removing or weakening a constraint.';
   }
   if (rawError.includes('duplicate')) {
-    return 'Greška: Duplikat varijable u solveru. Provjerite da nemate duplih ograničenja.';
+    return 'Error: Duplicate variable in solver. Check for duplicate constraints.';
   }
-  return `Greška u constraintima: ${rawError}`;
+  return `Constraint Error: ${rawError}`;
 }
 
 export const useLayoutStore = create<LayoutState>((set, get) => ({
@@ -210,7 +210,7 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
     }
   },
 
-  addElement: (type: string, width: number, height: number) => {
+  addElement: (type: string, width: number, height: number, x?: number, y?: number) => {
     const counters = { ...get().elementCounters };
     const count = (counters[type] || 0) + 1;
     counters[type] = count;
@@ -222,6 +222,17 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
     const newCode = currentCode + '\n' + newLine + '\n';
 
     set({ elementCounters: counters });
+    
+    // If coordinates provided, set override before parsing so solver picks it up
+    if (x !== undefined && y !== undefined) {
+      set(state => ({
+        positionOverrides: {
+          ...state.positionOverrides,
+          [id]: { left: x, top: y, width, height }
+        }
+      }));
+    }
+
     get().setCode(newCode, { keepPositionOverrides: true });
   },
 
@@ -515,6 +526,14 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
     if (ast) resolveOverlaps(ast, positions);
     positions = { ...positions };
 
+    // Apply overrides for all elements EXCEPT the one being dragged
+    const overrides = get().positionOverrides;
+    for (const oid of Object.keys(overrides)) {
+      if (oid !== id && positions[oid]) {
+        positions[oid] = { ...overrides[oid] };
+      }
+    }
+
     // Grouping logic (Recursive/Two-sided)
     const updateRecursively = (changedId: string, visited: Set<string>) => {
       if (visited.has(changedId)) return;
@@ -586,7 +605,16 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
     };
     markVisited(id);
 
-    set({ positionOverrides: overrides });
+    // After updating overrides, also update the visual 'positions' state 
+    // to ensure smooth rendering of the final dropped position + previous overrides
+    const finalPositions = { ...positions };
+    for (const oid of Object.keys(overrides)) {
+      if (finalPositions[oid]) {
+        finalPositions[oid] = { ...overrides[oid] };
+      }
+    }
+
+    set({ positionOverrides: overrides, positions: finalPositions });
   }
 }));
 

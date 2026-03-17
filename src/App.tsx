@@ -39,7 +39,7 @@ function App() {
   const elementNames = useMemo(() => (ast?.elements ?? []).map((e) => e.id) ?? [], [ast]);
   const constraints = useMemo(() => {
     const parsed = parseConstraintsFromCode(code);
-    if (error && error.includes('Konflikt')) {
+    if (error && error.includes('Conflict')) {
       return parsed.map(c => ({ ...c, hasError: true }));
     }
     return parsed;

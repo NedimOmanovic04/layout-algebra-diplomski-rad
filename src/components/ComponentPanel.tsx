@@ -10,14 +10,14 @@ interface ElementTemplate {
 }
 
 const ELEMENT_TEMPLATES: ElementTemplate[] = [
-  { type: 'header',  label: 'Header',  icon: '▬',  width: 800, height: 60 },
-  { type: 'navbar',  label: 'NavBar',  icon: '☰',  width: 800, height: 50 },
-  { type: 'sidebar', label: 'Sidebar', icon: '▮',  width: 200, height: 600 },
-  { type: 'footer',  label: 'Footer',  icon: '▭',  width: 800, height: 50 },
-  { type: 'button',  label: 'Button',  icon: '▢',  width: 120, height: 40 },
-  { type: 'card',    label: 'Card',    icon: '▧',  width: 300, height: 200 },
-  { type: 'input',   label: 'Input',   icon: '▤',  width: 200, height: 35 },
-  { type: 'image',   label: 'Image',   icon: '▩',  width: 300, height: 200 },
+  { type: 'header', label: 'Header', icon: '▬', width: 800, height: 60 },
+  { type: 'navbar', label: 'NavBar', icon: '☰', width: 800, height: 50 },
+  { type: 'sidebar', label: 'Sidebar', icon: '▮', width: 200, height: 600 },
+  { type: 'footer', label: 'Footer', icon: '▭', width: 800, height: 50 },
+  { type: 'button', label: 'Button', icon: '▢', width: 120, height: 40 },
+  { type: 'card', label: 'Card', icon: '▧', width: 300, height: 200 },
+  { type: 'input', label: 'Input', icon: '▤', width: 200, height: 35 },
+  { type: 'image', label: 'Image', icon: '▩', width: 300, height: 200 },
 ];
 
 export const ComponentPanel: React.FC = () => {
@@ -31,6 +31,14 @@ export const ComponentPanel: React.FC = () => {
             key={tpl.type}
             className="component-item"
             onClick={() => addElement(tpl.type, tpl.width, tpl.height)}
+            draggable
+            onDragStart={(e) => {
+              const data = JSON.stringify({ type: tpl.type, width: tpl.width, height: tpl.height });
+              e.dataTransfer.setData('application/json', data);
+              // Fallback for some browsers or older logic
+              e.dataTransfer.setData('componentType', tpl.type);
+              e.dataTransfer.effectAllowed = 'copy';
+            }}
             title={`Add ${tpl.label} (${tpl.width}×${tpl.height})`}
           >
             <span className="component-item-icon">{tpl.icon}</span>

@@ -445,26 +445,26 @@ export const ConstraintBuilder: React.FC<ConstraintBuilderProps> = ({
         style={styles.addBtn}
         onClick={handleAdd}
         disabled={!canAdd}
-        title={isDuplicate ? 'Constraint već postoji' : ''}
+        title={isDuplicate ? 'Constraint already exists' : ''}
       >
-        Dodaj Constraint
+        Add Constraint
       </button>
 
       <div style={styles.row}>
-        <div style={styles.label}>Aktivni constraints</div>
+        <div style={styles.label}>Active constraints</div>
         <div style={styles.list}>
           {constraints.length === 0 ? (
-            <div style={{ color: '#6272a4', fontSize: 11 }}>Nema constraints-a</div>
+            <div style={{ color: '#6272a4', fontSize: 11 }}>No constraints</div>
           ) : (
             constraints.map((c) => (
               <div key={c.id} style={c.hasError ? styles.itemError : styles.item}>
-                {c.hasError && <span title="Constraint je u konfliktu" style={{ color: '#ff5555', marginRight: 4 }}>⚠️</span>}
+                {c.hasError && <span title="Constraint conflict" style={{ color: '#ff5555', marginRight: 4 }}>⚠️</span>}
                 <span style={styles.itemText}>{c.left} {c.op} {c.right}</span>
                 <button
                   type="button"
                   style={styles.removeBtn}
                   onClick={() => onRemove(c.id)}
-                  title="Obriši"
+                  title="Remove"
                 >
                   ×
                 </button>

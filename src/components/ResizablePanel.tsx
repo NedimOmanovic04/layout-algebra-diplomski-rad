@@ -93,7 +93,7 @@ export const ResizablePanel: React.FC<ResizablePanelProps> = ({
     return (
       <div className={`resizable-panel collapsed ${className}`} style={style}>
         <div className={isVertical ? "collapsed-header-horizontal" : "collapsed-header"}>
-           <button className="collapse-toggle-btn" onClick={toggleCollapse} title="Prikaži panel">
+           <button className="collapse-toggle-btn" onClick={toggleCollapse} title="Show panel">
              {direction === 'right' ? '▶' : (direction === 'left' ? '◀' : (direction === 'bottom' ? '▲' : '▼')) }
            </button>
            {title && <div className={isVertical ? "collapsed-title-horizontal" : "collapsed-title"}>{title}</div>}
@@ -107,7 +107,7 @@ export const ResizablePanel: React.FC<ResizablePanelProps> = ({
       {!hideHeader && (
         <div className="panel-header-row">
           {title && <span className="panel-title-text">{title}</span>}
-          <button className="collapse-toggle-btn" onClick={toggleCollapse} title="Sakrij panel">
+          <button className="collapse-toggle-btn" onClick={toggleCollapse} title="Hide panel">
             {direction === 'right' ? '◀' : (direction === 'left' ? '▶' : (direction === 'bottom' ? '▼' : '▲'))}
           </button>
         </div>

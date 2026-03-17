@@ -32,7 +32,7 @@ export const ElementListPanel: React.FC = () => {
     const isSelected = selectedElementIds.includes(el.id);
     const groupingStatus = groups.find(g => g.followerId === el.id) ? `[Slave]` : (groups.find(g => g.leaderId === el.id) ? `[Leader]` : '');
     const isCollapsed = collapsedIds.has(el.id);
-    
+
     return (
       <div key={el.id} className="tree-node">
         <div
@@ -41,7 +41,7 @@ export const ElementListPanel: React.FC = () => {
           draggable
           onDragStart={(e) => { e.dataTransfer.setData('elementId', el.id); e.dataTransfer.effectAllowed = 'move'; }}
         >
-          <div 
+          <div
             className={`element-item-header ${isDropTarget ? 'drag-over' : ''}`}
             onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; setDragOverId(el.id); }}
             onDragLeave={() => setDragOverId(null)}
@@ -65,13 +65,13 @@ export const ElementListPanel: React.FC = () => {
             )}
             <div className="element-color-swatch" style={{ backgroundColor: colorMap[el.id] || 'var(--element-bg)' }} />
             <span className="element-id-text">
-              {el.id} {groupingStatus && <span style={{fontSize: '0.7em', color: 'var(--accent)', marginLeft: '8px'}}>{groupingStatus}</span>}
+              {el.id} {groupingStatus && <span style={{ fontSize: '0.7em', color: 'var(--accent)', marginLeft: '8px' }}>{groupingStatus}</span>}
             </span>
             <button
               type="button"
               className="element-delete-btn"
               onClick={(ev) => { ev.stopPropagation(); removeElement(el.id); }}
-              title="Obriši element"
+              title="Delete element"
             >
               ×
             </button>
@@ -83,6 +83,14 @@ export const ElementListPanel: React.FC = () => {
               <label>H:</label>
               <input type="number" className="size-input" value={el.height} onChange={ev => { ev.stopPropagation(); resizeElement(el.id, el.width, parseInt(ev.target.value) || el.height); }} />
             </div>
+            {hierarchyMap[el.id] && hierarchyMap[el.id] !== 'container' && (
+              <button
+                className="free-children-btn"
+                onClick={(e) => { e.stopPropagation(); setElementParent(el.id, 'container'); }}
+              >
+                Free from Parent
+              </button>
+            )}
           </div>
         </div>
         {!isCollapsed && children.length > 0 && (
@@ -118,9 +126,9 @@ export const ElementListPanel: React.FC = () => {
       </div>
 
       <div className="group-section">
-        <div className="panel-subheader">Grupiranje</div>
+        <div className="panel-subheader">Grouping</div>
         <div className="builder-row">
-          <label>Lider:</label>
+          <label>Leader:</label>
           <select className="builder-select" value={groupLeader} onChange={e => setGroupLeader(e.target.value)}>
             <option value="">...</option>
             {elements.map(e => <option key={e.id} value={e.id}>{e.id}</option>)}
@@ -128,7 +136,7 @@ export const ElementListPanel: React.FC = () => {
         </div>
         <button
           className="add-rule-btn"
-          onClick={() => { 
+          onClick={() => {
             if (groupLeader && selectedElementIds.length > 0) {
               if (selectedElementIds.length === 1) {
                 if (groupLeader !== selectedElementIds[0]) addGroup(groupLeader, selectedElementIds[0]);
@@ -139,7 +147,7 @@ export const ElementListPanel: React.FC = () => {
           }}
           disabled={!groupLeader || selectedElementIds.length === 0 || (selectedElementIds.length === 1 && selectedElementIds[0] === groupLeader)}
         >
-          {selectedElementIds.length > 1 ? `Grupiraj ${selectedElementIds.length} selektovana` : 'Grupiraj sa selektovanim'}
+          {selectedElementIds.length > 1 ? `Group ${selectedElementIds.length} selected` : 'Group with selected'}
         </button>
         {groups.length > 0 && (
           <div className="group-list">
@@ -151,17 +159,17 @@ export const ElementListPanel: React.FC = () => {
                 </div>
                 <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                   <label>Gap X:</label>
-                  <input 
-                    type="number" 
-                    style={{ width: '40px', background: 'var(--panel-bg)', color: 'white', border: '1px solid var(--border-color)'}} 
-                    value={g.gapX} 
+                  <input
+                    type="number"
+                    style={{ width: '40px', background: 'var(--panel-bg)', color: 'white', border: '1px solid var(--border-color)' }}
+                    value={g.gapX}
                     onChange={e => updateGroupGap(g.leaderId, g.followerId, parseInt(e.target.value) || 0, g.gapY)}
                   />
                   <label>Gap Y:</label>
-                  <input 
-                    type="number" 
-                    style={{ width: '40px', background: 'var(--panel-bg)', color: 'white', border: '1px solid var(--border-color)'}} 
-                    value={g.gapY} 
+                  <input
+                    type="number"
+                    style={{ width: '40px', background: 'var(--panel-bg)', color: 'white', border: '1px solid var(--border-color)' }}
+                    value={g.gapY}
                     onChange={e => updateGroupGap(g.leaderId, g.followerId, g.gapX, parseInt(e.target.value) || 0)}
                   />
                 </div>

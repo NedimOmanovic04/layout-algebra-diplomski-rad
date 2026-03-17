@@ -3,10 +3,10 @@ import { useLayoutStore } from '../store/layoutStore';
 import { exportLayout, getExportExtension, getExportMime, type ExportFormat } from '../export/cssExport';
 
 const FORMATS: { value: ExportFormat; label: string; desc: string }[] = [
-  { value: 'absolute', label: 'Absolute CSS', desc: 'position: absolute sa px vrijednostima' },
-  { value: 'flexbox', label: 'Flexbox CSS', desc: 'flex layout na osnovu rasporeda' },
-  { value: 'grid', label: 'CSS Grid', desc: 'grid-template na osnovu layout-a' },
-  { value: 'html', label: 'HTML + CSS', desc: 'kompletna HTML stranica sa inline stilovima' },
+  { value: 'absolute', label: 'Absolute CSS', desc: 'position: absolute with px values' },
+  { value: 'flexbox', label: 'Flexbox CSS', desc: 'flex layout based on arrangement' },
+  { value: 'grid', label: 'CSS Grid', desc: 'grid-template based on layout' },
+  { value: 'html', label: 'HTML + CSS', desc: 'complete HTML page with inline styles' },
 ];
 
 const styles = {
@@ -211,7 +211,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({ onClose }) => {
 
         <div style={styles.footer}>
           <button style={styles.copyBtn} onClick={handleCopy}>
-            {copied ? '✓ Kopirano!' : 'Kopiraj'}
+            {copied ? '✓ Copied!' : 'Copy'}
           </button>
           <button style={styles.exportBtn} onClick={handleDownload} disabled={!output}>
             ⬇ Download

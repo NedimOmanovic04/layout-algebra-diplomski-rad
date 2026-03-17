@@ -2,7 +2,7 @@ import { useRef } from 'react';
 import { useLayoutStore } from '../store/layoutStore';
 
 export const Canvas: React.FC = () => {
-  const { ast, error, positions, selectionOrder, selectedElementIds, handleDragStart, handleDrag, handleDragStop, setSelectedElementId, setPositionsDirect, resizeElement } = useLayoutStore();
+  const { ast, error, positions, selectionOrder, selectedElementIds, handleDragStart, handleDrag, handleDragStop, setSelectedElementId, setPositionsDirect, resizeElement, addElement } = useLayoutStore();
   const wrapperRef = useRef<HTMLDivElement>(null);
 
   const activeDragId = useRef<string | null>(null);
@@ -203,9 +203,61 @@ export const Canvas: React.FC = () => {
     return (yiq >= 128) ? '#000000' : '#ffffff';
   };
 
+  const onDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    let type = '';
+    let width = 100;
+    let height = 100;
+
+    try {
+      const jsonStr = e.dataTransfer.getData('application/json');
+      if (jsonStr) {
+        const data = JSON.parse(jsonStr);
+        type = data.type;
+        width = data.width;
+        height = data.height;
+      } else {
+        // Fallback to individual strings (lowercased by some browsers)
+        type = e.dataTransfer.getData('componenttype') || e.dataTransfer.getData('componentType');
+        width = parseInt(e.dataTransfer.getData('width')) || 100;
+        height = parseInt(e.dataTransfer.getData('height')) || 100;
+      }
+    } catch (err) {
+      console.error('Drop failed', err);
+    }
+
+    if (!type) return;
+
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+
+    const dropX = Math.round(x - width / 2);
+    const dropY = Math.round(y - height / 2);
+
+    addElement(type, width, height, dropX, dropY);
+  };
+
   return (
     <div className="canvas-wrapper canvas-wrapper-scroll" ref={wrapperRef} onClick={(e) => { if (!(e.target as Element).closest('.canvas-element')) setSelectedElementId(''); }}>
-      <div className="canvas-container" style={{ width: cw, height: ch }} data-container-size={`${cw}x${ch}`}>
+      <div 
+        className="canvas-container" 
+        style={{ width: cw, height: ch }} 
+        data-container-size={`${cw}x${ch}`}
+        onDragOver={(e) => {
+          // Check for either the JSON type or our legacy custom types (handles lowercasing)
+          const isComponent = e.dataTransfer.types.some(t => 
+            t.toLowerCase() === 'application/json' || 
+            t.toLowerCase() === 'componenttype'
+          );
+          
+          if (isComponent) {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'copy';
+          }
+        }}
+        onDrop={onDrop}
+      >
         {elementsToRender.map(el => {
           const pos = positions[el.id];
           if (!pos) return null;

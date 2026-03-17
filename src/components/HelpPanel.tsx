@@ -11,66 +11,66 @@ const HELP_ENTRIES: HelpEntry[] = [
   {
     title: 'CONTAINER',
     syntax: 'CONTAINER width height',
-    description: 'Definiše dimenzije glavnog kontejnera u pikselima. Mora biti min. 100x100.',
+    description: 'Defines dimensions of the main container in pixels. Must be min. 100x100.',
     example: 'CONTAINER 800 600',
   },
   {
     title: 'ELEMENT',
     syntax: 'ELEMENT id width height',
-    description: 'Kreira layout element sa ID-jem i dimenzijama. Dimenzije mogu biti u pikselima ili procentima.',
+    description: 'Creates a layout element with an ID and dimensions. Dimensions can be in pixels or percentages.',
     example: 'ELEMENT card 300 200\nELEMENT sidebar 25% 100%',
   },
   {
     title: 'CONSTRAINT',
     syntax: 'CONSTRAINT el.prop OP el.prop [* factor] [+/- offset] [STRENGTH]',
-    description: 'Definiše ograničenje (jednačinu) između varijabli elemenata. Podržava ==, >=, <= operatore, množenje (*), dijeljenje (/), i offset (+/-).',
+    description: 'Defines a constraint (equation) between element variables. Supports ==, >=, <= operators, multiplication (*), division (/), and offset (+/-).',
     example: 'CONSTRAINT card.centerX == container.centerX\nCONSTRAINT card.width == container.width * 0.5\nCONSTRAINT btn.left == card.right + 10\nCONSTRAINT card.width >= 200 WEAK',
   },
   {
     title: 'COLOR',
     syntax: 'COLOR elementId #hexcolor',
-    description: 'Postavlja boju elementa. Boja mora biti u hex formatu sa 6 cifara.',
+    description: 'Sets element color. Color must be in 6-digit hex format.',
     example: 'COLOR card #bd93f9\nCOLOR header #ff79c6',
   },
   {
     title: 'PARENT',
     syntax: 'PARENT childId parentId',
-    description: 'Definiše hijerarhiju — child element je unutar parent elementa. Pozicija child-a je relativna u odnosu na parent.',
+    description: 'Defines hierarchy — child element is inside parent element. Position of child is relative to parent.',
     example: 'PARENT button card\nPARENT icon button',
   },
   {
     title: 'AVOID',
     syntax: 'AVOID id1 id2',
-    description: 'Sprečava preklapanje dva elementa. Solver automatski razdvaja elemente koji se preklapaju.',
+    description: 'Prevents two elements from overlapping. The solver automatically separates overlapping elements.',
     example: 'AVOID card1 card2\nAVOID sidebar content',
   },
 ];
 
 const OPERATOR_ENTRIES = [
-  { op: '==', desc: 'Jednakost — lijeva strana mora biti jednaka desnoj' },
-  { op: '>=', desc: 'Veće ili jednako — lijeva strana mora biti veća ili jednaka' },
-  { op: '<=', desc: 'Manje ili jednako — lijeva strana mora biti manja ili jednaka' },
-  { op: '+', desc: 'Sabiranje — dodaje offset na desnu stranu constrainta' },
-  { op: '-', desc: 'Oduzimanje — oduzima offset od desne strane constrainta' },
-  { op: '*', desc: 'Množenje — množi desnu stranu faktorom (npr. * 0.5 za 50%)' },
-  { op: '/', desc: 'Dijeljenje — dijeli desnu stranu (npr. / 2 za polovinu)' },
+  { op: '==', desc: 'Equality — left side must equal right side' },
+  { op: '>=', desc: 'Greater or equal — left side must be greater or equal' },
+  { op: '<=', desc: 'Less or equal — left side must be less or equal' },
+  { op: '+', desc: 'Addition — adds offset to the right side' },
+  { op: '-', desc: 'Subtraction — subtracts offset from the right side' },
+  { op: '*', desc: 'Multiplication — multiplies right side by a factor (e.g. * 0.5 for 50%)' },
+  { op: '/', desc: 'Division — divides right side (e.g. / 2 for half)' },
 ];
 
 const STRENGTH_ENTRIES = [
-  { strength: 'REQUIRED', desc: 'Obavezno — ograničenje se mora zadovoljiti (default)', color: '#ff5555' },
-  { strength: 'STRONG', desc: 'Jako — solver će pokušati zadovoljiti, ali može popustiti pred REQUIRED', color: '#ffb86c' },
-  { strength: 'WEAK', desc: 'Slabo — solver zadovoljava samo ako ne krši jača ograničenja', color: '#50fa7b' },
+  { strength: 'REQUIRED', desc: 'Required — constraint must be satisfied (default)', color: '#ff5555' },
+  { strength: 'STRONG', desc: 'Strong — solver will try to satisfy, but can yield to REQUIRED', color: '#ffb86c' },
+  { strength: 'WEAK', desc: 'Weak — solver satisfies only if it does not violate stronger constraints', color: '#50fa7b' },
 ];
 
 const PROPERTY_ENTRIES = [
-  { prop: 'left', desc: 'Lijevi rub elementa (X koordinata)' },
-  { prop: 'right', desc: 'Desni rub elementa (left + width)' },
-  { prop: 'top', desc: 'Gornji rub elementa (Y koordinata)' },
-  { prop: 'bottom', desc: 'Donji rub elementa (top + height)' },
-  { prop: 'width', desc: 'Širina elementa' },
-  { prop: 'height', desc: 'Visina elementa' },
-  { prop: 'centerX', desc: 'Horizontalni centar (left + width/2)' },
-  { prop: 'centerY', desc: 'Vertikalni centar (top + height/2)' },
+  { prop: 'left', desc: 'Left edge of element (X coordinate)' },
+  { prop: 'right', desc: 'Right edge of element (left + width)' },
+  { prop: 'top', desc: 'Top edge of element (Y coordinate)' },
+  { prop: 'bottom', desc: 'Bottom edge of element (top + height)' },
+  { prop: 'width', desc: 'Width of element' },
+  { prop: 'height', desc: 'Height of element' },
+  { prop: 'centerX', desc: 'Horizontal center (left + width/2)' },
+  { prop: 'centerY', desc: 'Vertical center (top + height/2)' },
 ];
 
 const FULL_EXAMPLE = `// Responsive card layout
@@ -218,18 +218,20 @@ const styles = {
   },
   opRow: {
     display: 'flex',
-    alignItems: 'center',
-    gap: 8,
-    padding: '4px 0',
+    alignItems: 'flex-start',
+    gap: 12,
+    padding: '6px 0',
     fontSize: 12,
   },
   opBadge: {
     fontFamily: "'Fira Code', monospace",
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: 700,
     color: '#ff79c6',
-    width: 30,
-    textAlign: 'center' as const,
+    width: '90px',
+    textAlign: 'left' as const,
+    flexShrink: 0,
+    marginTop: '1px',
   },
   fullExample: {
     fontFamily: "'Fira Code', monospace",
@@ -303,14 +305,14 @@ export const HelpPanel: React.FC<HelpPanelProps> = ({ onClose }) => {
       <div style={styles.backdrop} onClick={onClose} />
       <div style={styles.overlay}>
         <div style={styles.header}>
-          <span style={styles.title}>📖 Dokumentacija</span>
+          <span style={styles.title}>Documentation</span>
           <button style={styles.closeBtn} onClick={onClose}>×</button>
         </div>
 
         <input
           style={styles.searchBox}
           type="text"
-          placeholder="Pretraži komande, operatore, primjere..."
+          placeholder="Search commands, operators, examples..."
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
           autoFocus
@@ -320,7 +322,7 @@ export const HelpPanel: React.FC<HelpPanelProps> = ({ onClose }) => {
           {/* DSL Commands */}
           {filteredHelp.length > 0 && (
             <>
-              <div style={styles.sectionTitle}>DSL Komande</div>
+              <div style={styles.sectionTitle}>DSL Commands</div>
               {filteredHelp.map((entry) => (
                 <div key={entry.title} style={styles.card}>
                   <div style={styles.cardTitle}>{entry.title}</div>
@@ -335,7 +337,7 @@ export const HelpPanel: React.FC<HelpPanelProps> = ({ onClose }) => {
           {/* Properties */}
           {filteredProps.length > 0 && (
             <>
-              <div style={styles.sectionTitle}>Varijable (Properties)</div>
+              <div style={styles.sectionTitle}>Variables (Properties)</div>
               <div style={styles.card}>
                 {filteredProps.map((p) => (
                   <div key={p.prop} style={styles.opRow}>
@@ -350,7 +352,7 @@ export const HelpPanel: React.FC<HelpPanelProps> = ({ onClose }) => {
           {/* Operators */}
           {filteredOps.length > 0 && (
             <>
-              <div style={styles.sectionTitle}>Operatori</div>
+              <div style={styles.sectionTitle}>Operators</div>
               <div style={styles.card}>
                 {filteredOps.map((o) => (
                   <div key={o.op} style={styles.opRow}>
@@ -365,7 +367,7 @@ export const HelpPanel: React.FC<HelpPanelProps> = ({ onClose }) => {
           {/* Strengths */}
           {filteredStrengths.length > 0 && (
             <>
-              <div style={styles.sectionTitle}>Prioriteti (Strength)</div>
+              <div style={styles.sectionTitle}>Priorities (Strength)</div>
               <div style={styles.card}>
                 {filteredStrengths.map((s) => (
                   <div key={s.strength} style={styles.opRow}>
@@ -380,7 +382,7 @@ export const HelpPanel: React.FC<HelpPanelProps> = ({ onClose }) => {
           {/* Full example */}
           {showExample && (
             <>
-              <div style={styles.sectionTitle}>Kompletni primjer</div>
+              <div style={styles.sectionTitle}>Full Example</div>
               <pre style={styles.fullExample}>{FULL_EXAMPLE}</pre>
             </>
           )}
@@ -388,7 +390,7 @@ export const HelpPanel: React.FC<HelpPanelProps> = ({ onClose }) => {
           {/* Keyboard shortcuts */}
           {(!filter || 'shortcut prečica undo redo tastatura keyboard ctrl'.includes(lowerFilter)) && (
             <>
-              <div style={styles.sectionTitle}>Prečice na tastaturi</div>
+              <div style={styles.sectionTitle}>Keyboard Shortcuts</div>
               <div style={styles.card}>
                 <div style={styles.opRow}>
                   <span style={{ ...styles.opBadge, width: 'auto', fontFamily: "'Fira Code', monospace" }}>Ctrl+Z</span>
@@ -404,7 +406,7 @@ export const HelpPanel: React.FC<HelpPanelProps> = ({ onClose }) => {
                 </div>
                 <div style={styles.opRow}>
                   <span style={{ ...styles.opBadge, width: 'auto', fontFamily: "'Fira Code', monospace" }}>Ctrl+Click</span>
-                  <span style={{ color: '#c0c0d0', fontSize: 12 }}>Multi-select elemenata</span>
+                  <span style={{ color: '#c0c0d0', fontSize: 12 }}>Multi-select elements</span>
                 </div>
               </div>
             </>
