@@ -210,34 +210,8 @@ function exportToHTML(
   positions: Record<string, { left: number; top: number; width: number; height: number }>
 ): string {
   const cssContent = exportToCSS(ast, positions);
-  const colorMap: Record<string, string> = {};
-  ast.colors.forEach(c => colorMap[c.elementId] = c.color);
 
-  // Build parent-child tree
-  const parentMap: Record<string, string> = {};
-  ast.hierarchy.forEach(h => parentMap[h.childId] = h.parentId);
-  const childrenOf: Record<string, string[]> = { container: [] };
-  ast.elements.forEach(el => {
-    if (el.id === 'container') return;
-    const parent = parentMap[el.id] || 'container';
-    if (!childrenOf[parent]) childrenOf[parent] = [];
-    childrenOf[parent].push(el.id);
-  });
-
-  // Build HTML tree recursively
-  const renderElement = (id: string, indent: number): string => {
-    const pad = '  '.repeat(indent);
-    const children = childrenOf[id] || [];
-    if (children.length === 0) {
-      return `${pad}<div class="${id}">${id}</div>`;
-    }
-    let html = `${pad}<div class="${id}">\n`;
-    for (const childId of children) {
-      html += renderElement(childId, indent + 1) + '\n';
-    }
-    html += `${pad}</div>`;
-    return html;
-  };
+  const elements = ast.elements.filter(e => e.id !== 'container');
 
   let html = `<!DOCTYPE html>\n<html lang="en">\n<head>\n  <meta charset="UTF-8">\n  <meta name="viewport" content="width=device-width, initial-scale=1.0">\n  <title>Layout Algebra Export</title>\n  <style>\n`;
 
@@ -248,15 +222,15 @@ function exportToHTML(
   }
 
   html += `  </style>\n</head>\n<body>\n`;
-
-  // Render container with children
   html += `  <div class="container">\n`;
-  const rootChildren = childrenOf['container'] || [];
-  for (const childId of rootChildren) {
-    html += renderElement(childId, 2) + '\n';
+
+  // Flat structure — all elements directly in the container
+  // Absolute positioning is always relative to .container
+  for (const el of elements) {
+    html += `    <div class="${el.id}">${el.id}</div>\n`;
   }
-  html += `  </div>\n`;
-  html += `</body>\n</html>\n`;
+
+  html += `  </div>\n</body>\n</html>\n`;
 
   return html;
 }
