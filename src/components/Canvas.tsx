@@ -4,7 +4,7 @@ import { useLayoutStore } from '../store/layoutStore';
 export const Canvas: React.FC = () => {
   const { ast, error, positions, selectionOrder, selectedElementIds, handleDragStart, handleDrag, handleDragStop, setSelectedElementId, setPositionsDirect, resizeElement } = useLayoutStore();
   const wrapperRef = useRef<HTMLDivElement>(null);
-  
+
   const activeDragId = useRef<string | null>(null);
   const dragStartPos = useRef({ x: 0, y: 0, left: 0, top: 0 });
   const didMove = useRef(false);
@@ -12,9 +12,9 @@ export const Canvas: React.FC = () => {
   if (error) return <div className="canvas-wrapper error">{error}</div>;
   if (!ast || !positions || Object.keys(positions).length === 0) {
     return (
-        <div className="canvas-wrapper empty">
-            <div className="empty-message">Invalid DSL or Solver Conflict</div>
-        </div>
+      <div className="canvas-wrapper empty">
+        <div className="empty-message">Invalid DSL or Solver Conflict</div>
+      </div>
     );
   }
 
@@ -112,7 +112,7 @@ export const Canvas: React.FC = () => {
       left: pos.left,
       top: pos.top
     };
-    
+
     handleDragStart(id);
 
     const onMouseMove = (moveEvt: MouseEvent) => {
@@ -233,7 +233,7 @@ export const Canvas: React.FC = () => {
               }}
             >
               <span className="element-label">{el.id}</span>
-              
+
               <div className="resize-handle resize-handle-nw" onMouseDown={(e) => onHandleMouseDown(e, el.id, 'nw')} />
               <div className="resize-handle resize-handle-ne" onMouseDown={(e) => onHandleMouseDown(e, el.id, 'ne')} />
               <div className="resize-handle resize-handle-sw" onMouseDown={(e) => onHandleMouseDown(e, el.id, 'sw')} />
