@@ -98,12 +98,21 @@ export function parseDSL(code: string): { ast: AST | null; error: string | null 
   }
 
   // Ensure container element is defined
-  if (!ast.elements.find(e => e.id === 'container')) {
+  const container = ast.elements.find(e => e.id === 'container');
+  if (!container) {
     ast.elements.unshift({ id: 'container', width: containerWidth, height: containerHeight });
   } else {
-    const cont = ast.elements.find(e => e.id === 'container')!;
-    cont.width = containerWidth;
-    cont.height = containerHeight;
+    container.width = containerWidth;
+    container.height = containerHeight;
+  }
+
+  // Ensure all elements have a color (fallback to default)
+  const defaultColor = '#8be9fd';
+  for (const el of ast.elements) {
+    if (el.id === 'container') continue;
+    if (!ast.colors.find(c => c.elementId === el.id)) {
+      ast.colors.push({ elementId: el.id, color: defaultColor });
+    }
   }
 
   // Validate hierarchy and avoids

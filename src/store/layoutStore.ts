@@ -217,7 +217,8 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
     const id = `${type}${count}`;
 
     const currentCode = get().code.trimEnd();
-    const newLine = `ELEMENT ${id} ${width} ${height}`;
+    const defaultColor = '#8be9fd';
+    const newLine = `ELEMENT ${id} ${width} ${height}\nCOLOR ${id} ${defaultColor}`;
     const newCode = currentCode + '\n' + newLine + '\n';
 
     set({ elementCounters: counters });
