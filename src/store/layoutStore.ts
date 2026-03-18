@@ -200,6 +200,48 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
           }
         }
 
+        // Re-enforce group offsets so solver deltas don't tear groups apart
+        const visitedGroups = new Set<string>();
+        const enforceGroupOffsets = (currId: string) => {
+          if (visitedGroups.has(currId)) return;
+          visitedGroups.add(currId);
+          const currPos = finalPositions[currId];
+          if (!currPos) return;
+
+          get().groups.forEach(g => {
+            if (g.leaderId === currId && !visitedGroups.has(g.followerId)) {
+              if (finalPositions[g.followerId]) {
+                finalPositions[g.followerId] = {
+                  ...finalPositions[g.followerId],
+                  left: currPos.left + g.offsetX,
+                  top: currPos.top + g.offsetY
+                };
+                if (currentOverrides[g.followerId]) {
+                  currentOverrides[g.followerId] = { ...finalPositions[g.followerId] };
+                }
+                enforceGroupOffsets(g.followerId);
+              }
+            }
+            if (g.followerId === currId && !visitedGroups.has(g.leaderId)) {
+               if (finalPositions[g.leaderId]) {
+                 finalPositions[g.leaderId] = {
+                   ...finalPositions[g.leaderId],
+                   left: currPos.left - g.offsetX,
+                   top: currPos.top - g.offsetY
+                 };
+                 if (currentOverrides[g.leaderId]) {
+                   currentOverrides[g.leaderId] = { ...finalPositions[g.leaderId] };
+                 }
+                 enforceGroupOffsets(g.leaderId);
+               }
+            }
+          });
+        };
+
+        get().groups.forEach(g => {
+          enforceGroupOffsets(g.leaderId);
+        });
+
         set({ ast, error: null, positions: finalPositions, positionOverrides: currentOverrides });
       } catch (e: any) {
         const message = friendlyError(e.message || String(e), code);
