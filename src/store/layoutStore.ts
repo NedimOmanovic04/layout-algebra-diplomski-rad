@@ -548,6 +548,31 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
     }
 
     // Grouping logic (Recursive/Two-sided)
+    // Find parents for clamping
+    const astState = get().ast;
+    const followerParentMap = new Map<string, string>();
+    if (astState) {
+      astState.hierarchy.forEach(h => followerParentMap.set(h.childId, h.parentId));
+    }
+
+    const clampToParent = (elemId: string, newLeft: number, newTop: number, width: number, height: number) => {
+      const parentId = followerParentMap.get(elemId);
+      if (!parentId || parentId === 'container') {
+         const cw = astState?.elements.find(e => e.id === 'container')?.width || 800;
+         const ch = astState?.elements.find(e => e.id === 'container')?.height || 600;
+         return {
+           left: Math.max(0, Math.min(newLeft, cw - width)),
+           top: Math.max(0, Math.min(newTop, ch - height))
+         };
+      }
+      const parentPos = positions[parentId];
+      if (!parentPos) return { left: Math.max(0, newLeft), top: Math.max(0, newTop) };
+      return {
+        left: Math.max(parentPos.left, Math.min(newLeft, parentPos.left + parentPos.width - width)),
+        top: Math.max(parentPos.top, Math.min(newTop, parentPos.top + parentPos.height - height)),
+      };
+    };
+
     const updateRecursively = (changedId: string, visited: Set<string>) => {
       if (visited.has(changedId)) return;
       visited.add(changedId);
@@ -559,10 +584,13 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
         if (g.leaderId === changedId && !visited.has(g.followerId)) {
           const followerPos = positions[g.followerId];
           if (followerPos) {
+            const rawLeft = pos.left + g.offsetX;
+            const rawTop = pos.top + g.offsetY;
+            const clamped = clampToParent(g.followerId, rawLeft, rawTop, followerPos.width, followerPos.height);
             positions[g.followerId] = {
               ...followerPos,
-              left: pos.left + g.offsetX,
-              top: pos.top + g.offsetY
+              left: clamped.left,
+              top: clamped.top
             };
             updateRecursively(g.followerId, visited);
           }
@@ -573,10 +601,13 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
         if (g.followerId === changedId && !visited.has(g.leaderId)) {
           const leaderPos = positions[g.leaderId];
           if (leaderPos) {
+            const rawLeft = pos.left - g.offsetX;
+            const rawTop = pos.top - g.offsetY;
+            const clamped = clampToParent(g.leaderId, rawLeft, rawTop, leaderPos.width, leaderPos.height);
             positions[g.leaderId] = {
               ...leaderPos,
-              left: pos.left - g.offsetX,
-              top: pos.top - g.offsetY
+              left: clamped.left,
+              top: clamped.top
             };
             updateRecursively(g.leaderId, visited);
           }

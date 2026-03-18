@@ -150,9 +150,10 @@ interface ExportModalProps {
 export const ExportModal: React.FC<ExportModalProps> = ({ onClose }) => {
   const { ast, positions } = useLayoutStore();
   const [format, setFormat] = useState<ExportFormat>('absolute');
+  const [isResponsive, setIsResponsive] = useState(false);
   const [copied, setCopied] = useState(false);
 
-  const output = useMemo(() => exportLayout(format, ast, positions), [format, ast, positions]);
+  const output = useMemo(() => exportLayout(format, ast, positions, isResponsive), [format, ast, positions, isResponsive]);
 
   const handleDownload = () => {
     if (!output) return;
@@ -201,6 +202,19 @@ export const ExportModal: React.FC<ExportModalProps> = ({ onClose }) => {
                 </button>
               ))}
             </div>
+            {(format === 'html' || format === 'absolute') && (
+              <div style={{ marginTop: 16 }}>
+                <label style={{ fontSize: 13, display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+                  <input 
+                    type="checkbox" 
+                    checked={isResponsive} 
+                    onChange={(e) => setIsResponsive(e.target.checked)} 
+                    style={{ accentColor: '#bd93f9', width: 16, height: 16, cursor: 'pointer' }}
+                  />
+                  Adaptive (Responsive % based on container)
+                </label>
+              </div>
+            )}
           </div>
 
           <div>

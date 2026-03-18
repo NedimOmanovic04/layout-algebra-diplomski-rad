@@ -14,15 +14,16 @@ export type ExportFormat = 'absolute' | 'flexbox' | 'grid' | 'html';
 export function exportLayout(
   format: ExportFormat,
   ast: AST | null,
-  positions: Record<string, { left: number; top: number; width: number; height: number }>
+  positions: Record<string, { left: number; top: number; width: number; height: number }>,
+  isResponsive: boolean = false
 ): string {
   if (!ast) return '';
   switch (format) {
-    case 'absolute': return exportToCSS(ast, positions);
+    case 'absolute': return exportToCSS(ast, positions, isResponsive);
     case 'flexbox': return exportToFlexbox(ast, positions);
     case 'grid': return exportToGrid(ast, positions);
-    case 'html': return exportToHTML(ast, positions);
-    default: return exportToCSS(ast, positions);
+    case 'html': return exportToHTML(ast, positions, isResponsive);
+    default: return exportToCSS(ast, positions, isResponsive);
   }
 }
 
@@ -45,7 +46,8 @@ export function getExportMime(format: ExportFormat): string {
 // --- Absolute CSS Export ---
 function exportToCSS(
   ast: AST,
-  positions: Record<string, { left: number; top: number; width: number; height: number }>
+  positions: Record<string, { left: number; top: number; width: number; height: number }>,
+  isResponsive: boolean = false
 ): string {
   const container = ast.elements.find(e => e.id === 'container');
   const cw = container?.width ?? 800;
@@ -53,20 +55,45 @@ function exportToCSS(
   const colorMap: Record<string, string> = {};
   ast.colors.forEach(c => colorMap[c.elementId] = c.color);
 
-  let css = '/* Layout Algebra — Exported CSS (Absolute) */\n';
-  css += `.container {\n  position: relative;\n  width: ${cw}px;\n  height: ${ch}px;\n  background: #282a36;\n}\n\n`;
+  let css = isResponsive 
+      ? '/* Layout Algebra — Exported CSS (Responsive) */\n'
+      : '/* Layout Algebra — Exported CSS (Absolute) */\n';
+  
+  if (isResponsive) {
+    css += `.container {\n  position: relative;\n  width: 100vw;\n  height: 100vh;\n  background: #282a36;\n  overflow: hidden;\n}\n\n`;
+  } else {
+    css += `.container {\n  position: relative;\n  width: ${cw}px;\n  height: ${ch}px;\n  background: #282a36;\n}\n\n`;
+  }
 
-  for (const el of ast.elements) {
-    if (el.id === 'container') continue;
+  const parentMap = new Map<string, string>();
+  ast.hierarchy.forEach(h => parentMap.set(h.childId, h.parentId));
+  const getDepth = (id: string): number => {
+    let d = 0, curr = id;
+    while (parentMap.has(curr)) { d++; curr = parentMap.get(curr)!; if (d > 50) break; }
+    return d;
+  };
+
+  const elements = [...ast.elements].filter(e => e.id !== 'container')
+    .sort((a, b) => getDepth(a.id) - getDepth(b.id));
+
+  for (const el of elements) {
     const pos = positions[el.id];
     if (!pos) continue;
 
     css += `.${el.id} {\n`;
     css += `  position: absolute;\n`;
-    css += `  left: ${Math.round(pos.left)}px;\n`;
-    css += `  top: ${Math.round(pos.top)}px;\n`;
-    css += `  width: ${Math.round(pos.width)}px;\n`;
-    css += `  height: ${Math.round(pos.height)}px;\n`;
+    if (isResponsive) {
+      css += `  left: ${(pos.left / cw * 100).toFixed(4)}%;\n`;
+      css += `  top: ${(pos.top / ch * 100).toFixed(4)}%;\n`;
+      css += `  width: ${(pos.width / cw * 100).toFixed(4)}%;\n`;
+      css += `  height: ${(pos.height / ch * 100).toFixed(4)}%;\n`;
+    } else {
+      css += `  left: ${Math.round(pos.left)}px;\n`;
+      css += `  top: ${Math.round(pos.top)}px;\n`;
+      css += `  width: ${Math.round(pos.width)}px;\n`;
+      css += `  height: ${Math.round(pos.height)}px;\n`;
+    }
+    css += `  z-index: ${getDepth(el.id) + 1};\n`;
     if (colorMap[el.id]) css += `  background-color: ${colorMap[el.id]};\n`;
     css += `}\n\n`;
   }
@@ -207,13 +234,24 @@ function exportToGrid(
 // --- HTML + CSS Export ---
 function exportToHTML(
   ast: AST,
-  positions: Record<string, { left: number; top: number; width: number; height: number }>
+  positions: Record<string, { left: number; top: number; width: number; height: number }>,
+  isResponsive: boolean = false
 ): string {
-  const cssContent = exportToCSS(ast, positions);
+  const cssContent = exportToCSS(ast, positions, isResponsive);
+  
+  const parentMap = new Map<string, string>();
+  ast.hierarchy.forEach(h => parentMap.set(h.childId, h.parentId));
+  const getDepth = (id: string): number => {
+    let d = 0, curr = id;
+    while (parentMap.has(curr)) { d++; curr = parentMap.get(curr)!; if (d > 50) break; }
+    return d;
+  };
 
-  const elements = ast.elements.filter(e => e.id !== 'container');
+  const elements = [...ast.elements].filter(e => e.id !== 'container')
+    .sort((a, b) => getDepth(a.id) - getDepth(b.id));
 
   let html = `<!DOCTYPE html>\n<html lang="en">\n<head>\n  <meta charset="UTF-8">\n  <meta name="viewport" content="width=device-width, initial-scale=1.0">\n  <title>Layout Algebra Export</title>\n  <style>\n`;
+  html += `    body, html { margin: 0; padding: 0; width: 100%; height: 100%; }\n`;
 
   // Indent CSS inside <style>
   const cssLines = cssContent.split('\n');
