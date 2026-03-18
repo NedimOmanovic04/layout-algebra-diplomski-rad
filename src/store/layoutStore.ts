@@ -21,7 +21,7 @@ interface LayoutState {
   elementCounters: Record<string, number>;
   selectedElementIds: string[];
   selectionOrder: string[];
-  setCode: (code: string, opts?: { keepPositionOverrides?: boolean; skipHistory?: boolean }) => void;
+  setCode: (code: string, opts?: { keepPositionOverrides?: boolean; skipHistory?: boolean; ignoredDeltaIds?: Set<string> }) => void;
   setSelectedElementId: (id: string, multi?: boolean) => void;
   addElement: (type: string, width: number, height: number, x?: number, y?: number) => void;
   resizeElement: (id: string, newWidth: number, newHeight: number, newLeft?: number, newTop?: number) => void;
@@ -151,7 +151,7 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
     get().setCode(entry.code, { keepPositionOverrides: true, skipHistory: true });
   },
 
-  setCode: (code: string, opts?: { keepPositionOverrides?: boolean; skipHistory?: boolean }) => {
+  setCode: (code: string, opts?: { keepPositionOverrides?: boolean; skipHistory?: boolean; ignoredDeltaIds?: Set<string> }) => {
     if (!opts?.skipHistory) {
       get().pushHistory();
     }
@@ -172,17 +172,17 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
         const ch = container?.height ?? 600;
         solver.update(ast, cw, ch);
         const solverPositions = solver.getPositions();
-        
+
         // Post-solve: apply AVOID collisions if any
         resolveOverlaps(ast, solverPositions);
-        
+
         // Apply position overrides (from manual resize/drag) 
         // Logic: if an element has an override, it means user manual adjustment.
         // If the solver says it moved (e.g. parent moved or constraints changed),
         // we should apply that solver delta to the override so it stays consistent relative to its logic.
         const currentOverrides = { ...get().positionOverrides };
         const finalPositions = { ...solverPositions };
-        
+
         for (const id of Object.keys(currentOverrides)) {
           if (finalPositions[id]) {
             const oldP = oldPositions[id];
@@ -191,15 +191,15 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
               // Apply the delta from the solver to the existing override
               const dx = newS.left - oldP.left;
               const dy = newS.top - oldP.top;
-              if (dx !== 0 || dy !== 0) {
-                 currentOverrides[id].left += dx;
-                 currentOverrides[id].top += dy;
+              if ((dx !== 0 || dy !== 0) && !opts?.ignoredDeltaIds?.has(id)) {
+                currentOverrides[id].left += dx;
+                currentOverrides[id].top += dy;
               }
             }
             finalPositions[id] = { ...currentOverrides[id] };
           }
         }
-        
+
         set({ ast, error: null, positions: finalPositions, positionOverrides: currentOverrides });
       } catch (e: any) {
         const message = friendlyError(e.message || String(e), code);
@@ -222,7 +222,7 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
     const newCode = currentCode + '\n' + newLine + '\n';
 
     set({ elementCounters: counters });
-    
+
     // If coordinates provided, set override before parsing so solver picks it up
     if (x !== undefined && y !== undefined) {
       set(state => ({
@@ -241,6 +241,7 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
     const h = Math.max(20, Math.round(newHeight));
     const currentCode = get().code;
     const ast = get().ast;
+    let ignoredDeltaIds = new Set<string>();
 
     let left = newLeft;
     let top = newTop;
@@ -255,7 +256,7 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
     if (left !== undefined && top !== undefined) {
       const newOverrides = { ...get().positionOverrides, [id]: { left, top, width: w, height: h } };
       const currentPositions = { ...get().positions, [id]: { left, top, width: w, height: h } };
-      
+
       // Sync recursive group offsets (demo1 behavior)
       const visited = new Set<string>();
       const syncGroupRecursively = (currId: string) => {
@@ -263,27 +264,36 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
         visited.add(currId);
         const pos = currentPositions[currId];
         if (pos) newOverrides[currId] = pos;
-        
+
         get().groups.forEach(g => {
           if (g.leaderId === currId || g.followerId === currId) {
-            const leader = currentPositions[g.leaderId];
-            const follower = currentPositions[g.followerId];
-            if (leader && follower) {
-              g.offsetX = follower.left - leader.left;
-              g.offsetY = follower.top - leader.top;
-              g.gapX = follower.left - (leader.left + leader.width);
-              g.gapY = follower.top - (leader.top + leader.height);
-            }
             syncGroupRecursively(g.leaderId === currId ? g.followerId : g.leaderId);
           }
         });
       };
       syncGroupRecursively(id);
 
+      // Rebuild groups immutably and calculate new coordinates
+      const nextGroups = get().groups.map(g => {
+        const leader = currentPositions[g.leaderId];
+        const follower = currentPositions[g.followerId];
+        if (leader && follower && (g.leaderId === id || g.followerId === id)) {
+          return {
+            ...g,
+            offsetX: follower.left - leader.left,
+            offsetY: follower.top - leader.top,
+            gapX: follower.left - (leader.left + leader.width),
+            gapY: follower.top - (leader.top + leader.height),
+          };
+        }
+        return g;
+      });
+
       set({ 
         positionOverrides: newOverrides,
-        groups: [...get().groups] // Trigger update
+        groups: nextGroups
       });
+      ignoredDeltaIds = new Set(Object.keys(newOverrides));
 
       if (ast) {
         const tree: Record<string, string> = {};
@@ -307,7 +317,10 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
     }
 
     if (newCode !== currentCode) {
-      get().setCode(newCode, { keepPositionOverrides: true });
+      get().setCode(newCode, { 
+        keepPositionOverrides: true,
+        ignoredDeltaIds
+      });
     }
   },
 
@@ -326,7 +339,7 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
     const currentCode = get().code;
     const regex = new RegExp(`^COLOR\\s+${id}\\s+#[0-9a-fA-F]{6}`, 'm');
     let newCode;
-    
+
     if (regex.test(currentCode)) {
       newCode = currentCode.replace(regex, `COLOR ${id} ${color}`);
     } else {
@@ -349,7 +362,7 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
     const currentCode = get().code;
     const regex = new RegExp(`^PARENT\\s+${childId}\\s+[a-zA-Z0-9_]+`, 'm');
     let newCode;
-    
+
     if (parentId === 'none') {
       newCode = currentCode.replace(regex, '').replace(/\n\n+/g, '\n');
     } else {
@@ -410,10 +423,10 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
     if (id) {
       const prevIds = get().selectedElementIds;
       const prevOrder = get().selectionOrder.filter(x => x !== id);
-      
+
       if (multi) {
-        const nextIds = prevIds.includes(id) 
-          ? prevIds.filter(x => x !== id) 
+        const nextIds = prevIds.includes(id)
+          ? prevIds.filter(x => x !== id)
           : [...prevIds, id];
         set({ selectedElementIds: nextIds, selectionOrder: [...prevOrder, id] });
       } else {
@@ -475,7 +488,7 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
     if (!leader) return;
     const currentGroups = get().groups;
     const newGroups = [...currentGroups];
-    
+
     followerIds.forEach(fid => {
       if (fid === leaderId) return;
       const follower = positions[fid];
@@ -591,7 +604,7 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
     solver.endDrag(id, lockedIds);
     let positions = get().positions;
     const overrides = { ...get().positionOverrides };
-    
+
     const visited = new Set<string>();
     const markVisited = (currId: string) => {
       if (visited.has(currId)) return;
@@ -619,7 +632,7 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
 }));
 
 function resolveOverlaps(
-  ast: AST, 
+  ast: AST,
   positions: Record<string, { left: number; top: number; width: number; height: number }>
 ) {
   if (!ast.avoids || ast.avoids.length === 0) return;
@@ -628,7 +641,7 @@ function resolveOverlaps(
     for (const rule of ast.avoids) {
       const a = positions[rule.id1];
       const b = positions[rule.id2];
-      
+
       if (!a || !b) continue;
 
       const overlapX = a.left < b.left + b.width && a.left + a.width > b.left;

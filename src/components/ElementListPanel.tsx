@@ -30,7 +30,12 @@ export const ElementListPanel: React.FC = () => {
     const children = getChildren(el.id);
     const isDropTarget = dragOverId === el.id;
     const isSelected = selectedElementIds.includes(el.id);
-    const groupingStatus = groups.find(g => g.followerId === el.id) ? `[Slave]` : (groups.find(g => g.leaderId === el.id) ? `[Leader]` : '');
+    const leaderGroups = groups.map((g, i) => ({ ...g, num: i + 1 })).filter(g => g.leaderId === el.id);
+    const slaveGroups  = groups.map((g, i) => ({ ...g, num: i + 1 })).filter(g => g.followerId === el.id);
+    const groupingStatus = [
+      ...slaveGroups.map(g => `[Slave #${g.num}]`),
+      ...leaderGroups.map(g => `[Leader #${g.num}]`),
+    ].join(' ');
     const isCollapsed = collapsedIds.has(el.id);
 
     return (

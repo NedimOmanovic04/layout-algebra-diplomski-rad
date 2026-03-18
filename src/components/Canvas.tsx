@@ -240,17 +240,17 @@ export const Canvas: React.FC = () => {
 
   return (
     <div className="canvas-wrapper canvas-wrapper-scroll" ref={wrapperRef} onClick={(e) => { if (!(e.target as Element).closest('.canvas-element')) setSelectedElementId(''); }}>
-      <div 
-        className="canvas-container" 
-        style={{ width: cw, height: ch }} 
+      <div
+        className="canvas-container"
+        style={{ width: cw, height: ch }}
         data-container-size={`${cw}x${ch}`}
         onDragOver={(e) => {
           // Check for either the JSON type or our legacy custom types (handles lowercasing)
-          const isComponent = e.dataTransfer.types.some(t => 
-            t.toLowerCase() === 'application/json' || 
+          const isComponent = e.dataTransfer.types.some(t =>
+            t.toLowerCase() === 'application/json' ||
             t.toLowerCase() === 'componenttype'
           );
-          
+
           if (isComponent) {
             e.preventDefault();
             e.dataTransfer.dropEffect = 'copy';

@@ -27,5 +27,8 @@ The application allows users to define layouts using semantic relationships rath
 - **Export Logic**: Translating logical constraints into standardized CSS layout models.
 
 ---
+<<<<<<< HEAD
+=======
 ![Kako izgleda](kakoizgleda.png)
+>>>>>>> origin/master
 *Graduation Project - Nedim Omanović*
